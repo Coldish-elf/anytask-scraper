@@ -239,6 +239,14 @@ MainScreen {
     background: $surface;
 }
 
+#gradebook-body {
+    height: 1fr;
+}
+
+#gradebook-table {
+    height: 100%;
+}
+
 .queue-unavailable {
     text-align: center;
     color: $text-muted;
@@ -584,26 +592,36 @@ SubmissionScreen {
     border-left: wide $primary;
     padding: 1 2;
     margin: 1 0;
+    height: auto;
 }
 
 .comment-card.-after-deadline {
     border-left: wide $error;
 }
 
+.comment-card.-system-event {
+    border-left: wide $warning;
+    background: $surface-darken-2;
+}
+
 .comment-header {
+    height: auto;
     text-style: bold;
 }
 
 .comment-body {
+    height: auto;
     margin-top: 1;
 }
 
 .comment-files {
+    height: auto;
     color: $text-muted;
     margin-top: 1;
 }
 
 .comment-links {
+    height: auto;
     color: $text-muted;
 }
 

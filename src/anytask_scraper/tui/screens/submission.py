@@ -64,6 +64,8 @@ class SubmissionScreen(Screen[None]):
                     card = Container(classes="comment-card")
                     if comment.is_after_deadline:
                         card.add_class("-after-deadline")
+                    if comment.is_system_event:
+                        card.add_class("-system-event")
 
                     ts = comment.timestamp.strftime("%d.%m.%Y %H:%M") if comment.timestamp else "-"
                     after_tag = " [bold red](LATE)[/bold red]" if comment.is_after_deadline else ""
@@ -77,6 +79,8 @@ class SubmissionScreen(Screen[None]):
                     if comment.content_html:
                         text = strip_html(comment.content_html)
                         if text:
+                            if comment.is_system_event:
+                                text = f"[italic]{text}[/italic]"
                             card.compose_add_child(Label(text, classes="comment-body"))
 
                     if comment.files:

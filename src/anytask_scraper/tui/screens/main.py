@@ -47,6 +47,7 @@ from anytask_scraper.parser import (
     extract_issue_id_from_breadcrumb,
     parse_course_page,
     parse_gradebook_page,
+    parse_profile_page,
     parse_submission_page,
     strip_html,
 )
@@ -179,6 +180,7 @@ class MainScreen(Screen[None]):
         Binding("3", "tab_gradebook", "Gradebook", show=False),
         Binding("4", "tab_export", "Export", show=False),
         Binding("a", "add_course", "Add", show=True),
+        Binding("d", "discover_courses", "Discover", show=True),
         Binding("x", "remove_course", "Remove", show=True),
         Binding("h", "focus_left", show=False),
         Binding("l", "focus_right", show=False),
@@ -276,7 +278,8 @@ class MainScreen(Screen[None]):
                         "Select a course to view gradebook",
                         id="gradebook-info-label",
                     )
-                    yield DataTable(id="gradebook-table")
+                    with Vertical(id="gradebook-body"):
+                        yield DataTable(id="gradebook-table")
 
                 with (
                     TabPane("Export", id="export-tab"),
@@ -403,6 +406,7 @@ class MainScreen(Screen[None]):
         common = (
             "[dim]ctrl+q[/dim] Quit  "
             "[dim]a[/dim] Add  "
+            "[dim]d[/dim] Discover  "
             "[dim]x[/dim] Remove  "
             "[dim]ctrl+y[/dim] Copy  "
             "[dim]ctrl+l[/dim] Logout"
@@ -957,6 +961,61 @@ class MainScreen(Screen[None]):
         self._show_status(f"Loading course {course_id}...")
         self._fetch_course(course_id)
 
+    def action_discover_courses(self) -> None:
+        """Discover courses from user profile."""
+        self._show_status("Discovering courses from profile...")
+        self._do_discover_courses()
+
+    @work(thread=True)
+    def _do_discover_courses(self) -> None:
+        try:
+            client = self.app.client  # type: ignore[attr-defined]
+            if not client:
+                self.app.call_from_thread(self._show_status, "No client", kind="error")
+                return
+
+            html = client.fetch_profile_page()
+            entries = parse_profile_page(html)
+
+            if not entries:
+                self.app.call_from_thread(
+                    self._show_status, "No courses found on profile", kind="warning"
+                )
+                return
+
+            teacher_ids = {e.course_id for e in entries if e.role == "teacher"}
+            student_only = [
+                e for e in entries if e.role == "student" and e.course_id not in teacher_ids
+            ]
+
+            added = 0
+            for entry in entries:
+                if entry.course_id not in self.app.courses:  # type: ignore[attr-defined]
+                    self.app.call_from_thread(self._fetch_course, entry.course_id)
+                    added += 1
+
+            role_info = (
+                f"{len(teacher_ids)} teacher, {len(student_only)} student-only"
+            )
+            if added:
+                self.app.call_from_thread(
+                    self._show_status,
+                    f"Discovered {len(entries)} courses ({role_info}), loading {added} new...",
+                    kind="success",
+                )
+            else:
+                self.app.call_from_thread(
+                    self._show_status,
+                    f"All {len(entries)} courses already loaded ({role_info})",
+                    kind="info",
+                )
+        except Exception as e:
+            self.app.call_from_thread(
+                self._show_status,
+                f"Discover failed: {e}",
+                kind="error",
+            )
+
     def action_remove_course(self) -> None:
         if self._selected_course_id is None:
             self._show_status("No course selected", kind="warning")
@@ -1284,6 +1343,8 @@ class MainScreen(Screen[None]):
                 if comment.content_html:
                     text = strip_html(comment.content_html)
                     if text:
+                        if comment.is_system_event:
+                            text = f"[italic]{text}[/italic]"
                         scroll.mount(Label(text, classes="detail-text"))
                 if comment.files:
                     fnames = ", ".join(f.filename for f in comment.files)

@@ -16,6 +16,7 @@ from anytask_scraper.models import (
     Gradebook,
     GradebookEntry,
     GradebookGroup,
+    ProfileCourseEntry,
     QueueFilters,
     Submission,
     Task,
@@ -26,6 +27,7 @@ logger = logging.getLogger(__name__)
 _DEADLINE_RE = re.compile(r"(\d{2}):(\d{2})\s+(\d{2})-(\d{2})-(\d{4})")
 _TASK_ID_RE = re.compile(r"collapse_(\d+)")
 _TASK_EDIT_RE = re.compile(r"/task/edit/(\d+)")
+_COURSE_URL_RE = re.compile(r"/course/(\d+)")
 
 
 def parse_course_page(html: str, course_id: int) -> Course:
@@ -47,6 +49,38 @@ def parse_course_page(html: str, course_id: int) -> Course:
     logger.debug("Parsed %d tasks for course %d", len(tasks), course_id)
 
     return Course(course_id=course_id, title=title, teachers=teachers, tasks=tasks)
+
+
+def parse_profile_page(html: str) -> list[ProfileCourseEntry]:
+    """Parse user profile page to discover courses.
+
+    Returns all courses found on the profile, tagged with their role
+    ("teacher" or "student"). If a course appears in both sections,
+    only the "teacher" entry is kept.
+    """
+    soup = BeautifulSoup(html, "lxml")
+    seen: dict[int, ProfileCourseEntry] = {}
+
+    teacher_div = soup.find("div", id="teacher_course")
+    if teacher_div:
+        for a_tag in teacher_div.find_all("a", href=_COURSE_URL_RE):
+            m = _COURSE_URL_RE.search(str(a_tag["href"]))
+            if m:
+                cid = int(m.group(1))
+                title = a_tag.get_text(strip=True)
+                seen[cid] = ProfileCourseEntry(course_id=cid, title=title, role="teacher")
+
+    student_div = soup.find("div", id="course_list")
+    if student_div:
+        for a_tag in student_div.find_all("a", href=_COURSE_URL_RE):
+            m = _COURSE_URL_RE.search(str(a_tag["href"]))
+            if m:
+                cid = int(m.group(1))
+                if cid not in seen:
+                    title = a_tag.get_text(strip=True)
+                    seen[cid] = ProfileCourseEntry(course_id=cid, title=title, role="student")
+
+    return list(seen.values())
 
 
 def _extract_course_title(soup: BeautifulSoup) -> str:
@@ -201,7 +235,14 @@ def _extract_task_id_from_collapse(tag: Tag) -> int:
 def strip_html(text: str) -> str:
     """Strip HTML and decode entities."""
     soup = BeautifulSoup(text, "lxml")
-    return unescape(soup.get_text(separator=" ", strip=True))
+    for br in soup.find_all("br"):
+        br.replace_with("\n")
+    for tag in soup.find_all(["p", "li", "tr", "div"]):
+        tag.insert_before("\n")
+    raw = soup.get_text()
+    lines = [line.strip() for line in raw.splitlines()]
+    result = "\n".join(line for line in lines if line)
+    return unescape(result)
 
 
 def parse_task_edit_page(html: str) -> str:
@@ -381,8 +422,14 @@ def _parse_single_comment(li: Tag) -> Comment | None:
 
     content_div = row.find("div", class_="issue-page-comment")
     content_html = ""
+    is_system_event = False
     if content_div:
         content_html = content_div.decode_contents().strip()
+    elif history_body:
+        p_tag = history_body.find("p", recursive=False)
+        if p_tag:
+            content_html = p_tag.decode_contents().strip()
+            is_system_event = True
 
     files = _parse_comment_files(row)
 
@@ -396,6 +443,7 @@ def _parse_single_comment(li: Tag) -> Comment | None:
         files=files,
         links=links,
         is_after_deadline=is_after_deadline,
+        is_system_event=is_system_event,
     )
 
 

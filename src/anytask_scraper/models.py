@@ -33,6 +33,15 @@ class Course:
 
 
 @dataclass
+class ProfileCourseEntry:
+    """Course entry from user profile."""
+
+    course_id: int
+    title: str
+    role: str
+
+
+@dataclass
 class QueueEntry:
     """One queue row."""
 

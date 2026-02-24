@@ -25,6 +25,7 @@ from anytask_scraper.parser import (
     extract_issue_id_from_breadcrumb,
     parse_course_page,
     parse_gradebook_page,
+    parse_profile_page,
     parse_submission_page,
 )
 from anytask_scraper.storage import (
@@ -123,6 +124,19 @@ def _build_parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     subparsers.add_parser("tui", help="Launch interactive TUI")
+
+    discover_p = subparsers.add_parser("discover", help="Discover courses from user profile")
+    discover_p.add_argument(
+        "--role",
+        choices=["all", "student", "teacher"],
+        default="all",
+        help="Filter by role (default: all)",
+    )
+    discover_p.add_argument(
+        "--student-only",
+        action="store_true",
+        help="Show only courses where you are a student but not a teacher",
+    )
 
     course_p = subparsers.add_parser("course", help="Scrape course tasks")
     course_p.add_argument("--course", "-c", type=int, nargs="+", required=True, help="Course ID(s)")
@@ -446,6 +460,27 @@ def _resolve_output_dir(args: argparse.Namespace) -> str:
     if args.default_output:
         return str(args.default_output)
     return "."
+
+
+def _run_discover(args: argparse.Namespace, client: AnytaskClient) -> None:
+    with console.status("[bold blue]Fetching profile..."):
+        html = client.fetch_profile_page()
+        entries = parse_profile_page(html)
+
+    if args.student_only:
+        teacher_ids = {e.course_id for e in entries if e.role == "teacher"}
+        entries = [e for e in entries if e.role == "student" and e.course_id not in teacher_ids]
+    elif args.role != "all":
+        entries = [e for e in entries if e.role == args.role]
+
+    if not entries:
+        console.print("[yellow]No courses found[/yellow]")
+        return
+
+    _print_ok(args, f"Found {len(entries)} course(s)")
+    for entry in entries:
+        role_tag = "[blue]teacher[/blue]" if entry.role == "teacher" else "[green]student[/green]"
+        console.print(f"  {role_tag}  [bold]{entry.course_id}[/bold]  {entry.title}")
 
 
 def _print_ok(args: argparse.Namespace, message: str) -> None:
@@ -794,6 +829,8 @@ def main(argv: list[str] | None = None) -> None:
 
             if args.command == "course":
                 _run_course(args, client)
+            elif args.command == "discover":
+                _run_discover(args, client)
             elif args.command == "gradebook":
                 _run_gradebook(args, client)
             elif args.command == "queue":

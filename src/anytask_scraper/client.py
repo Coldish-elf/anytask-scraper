@@ -168,6 +168,12 @@ class AnytaskClient:
         resp = self._request("GET", f"{BASE_URL}/course/{course_id}")
         return resp.text
 
+    def fetch_profile_page(self) -> str:
+        """Return user profile page HTML."""
+        logger.debug("Fetching user profile page")
+        resp = self._request("GET", f"{BASE_URL}/accounts/profile")
+        return resp.text
+
     def fetch_task_description(self, task_id: int) -> str:
         """Return task description from /task/edit/{id}."""
         logger.debug("Fetching task description for task %d", task_id)
