@@ -1,5 +1,3 @@
-"""Project data models."""
-
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -204,7 +202,8 @@ def filter_gradebook(
             entries = [e for e in entries if e.total_score >= min_score]
         if last_name_from or last_name_to:
             entries = [
-                e for e in entries
+                e
+                for e in entries
                 if last_name_in_range(e.student_name, last_name_from, last_name_to)
             ]
 

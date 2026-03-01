@@ -45,6 +45,9 @@
 
 Экспортирует модели в `JSON` / `CSV` / `Markdown` и скачивает файлы submissions.
 
+Дополнительный слой состояния: `json_db.py` с `QueueJsonDB` для локальной JSON-базы
+очереди (`courses -> students -> assignments -> files`) и `issue_chain` журнала write/grade событий.
+
 ### 5. Отображение (`display.py`)
 
 Рендерит Rich-таблицы и панели в терминале для CLI.

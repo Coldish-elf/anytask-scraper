@@ -1,5 +1,3 @@
-"""Main TUI application for anytask-scraper."""
-
 from __future__ import annotations
 
 import json

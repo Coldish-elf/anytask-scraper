@@ -1,5 +1,3 @@
-"""TUI screens for anytask-scraper."""
-
 from __future__ import annotations
 
 from anytask_scraper.tui.screens.action_menu import ActionMenuScreen

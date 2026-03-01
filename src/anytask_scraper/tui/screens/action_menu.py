@@ -1,5 +1,3 @@
-"""Simple modal action menu for right-click context actions."""
-
 from __future__ import annotations
 
 from textual import on

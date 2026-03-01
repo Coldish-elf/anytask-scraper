@@ -1,5 +1,3 @@
-"""Login screen for anytask-scraper TUI."""
-
 from __future__ import annotations
 
 import logging

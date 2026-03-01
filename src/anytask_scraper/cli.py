@@ -1,5 +1,3 @@
-"""CLI for anytask-scraper."""
-
 from __future__ import annotations
 
 import argparse
@@ -10,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from rich.console import Console
+from rich.table import Table
 
 from anytask_scraper._logging import setup_logging
 from anytask_scraper.client import AnytaskClient, LoginError
@@ -19,6 +18,7 @@ from anytask_scraper.display import (
     display_queue,
     display_submission,
 )
+from anytask_scraper.json_db import QueueJsonDB
 from anytask_scraper.models import QueueEntry, ReviewQueue
 from anytask_scraper.parser import (
     extract_csrf_from_queue_page,
@@ -303,6 +303,184 @@ def _build_parser() -> argparse.ArgumentParser:
         nargs="+",
         default=None,
         help="Exclude these columns from export",
+    )
+
+    db_p = subparsers.add_parser("db", help="Manage local queue JSON DB")
+    db_sub = db_p.add_subparsers(dest="db_action", required=True)
+
+    db_sync_p = db_sub.add_parser("sync", help="Fetch queue and sync DB")
+    db_sync_p.add_argument("--course", "-c", type=int, required=True, help="Course ID")
+    db_sync_p.add_argument(
+        "--db-file",
+        default="./queue_db.json",
+        help="Path to queue DB file",
+    )
+    db_sync_p.add_argument(
+        "--course-title",
+        default="",
+        help="Optional course title to store in DB",
+    )
+    db_sync_p.add_argument(
+        "--deep",
+        action="store_true",
+        help="Fetch full submission details and append comment events",
+    )
+    db_sync_p.add_argument("--filter-task", default="", help="Filter by task title")
+    db_sync_p.add_argument("--filter-reviewer", default="", help="Filter by reviewer")
+    db_sync_p.add_argument("--filter-status", default="", help="Filter by status")
+    db_sync_p.add_argument(
+        "--last-name-from",
+        default="",
+        help="Keep only students whose last name >= this value",
+    )
+    db_sync_p.add_argument(
+        "--last-name-to",
+        default="",
+        help="Keep only students whose last name <= this value",
+    )
+    db_sync_p.add_argument(
+        "--pull",
+        action="store_true",
+        help="Immediately pull newly synced entries",
+    )
+    db_sync_p.add_argument(
+        "--limit",
+        type=int,
+        default=None,
+        help="Limit pulled entries when --pull is used",
+    )
+    db_sync_p.add_argument(
+        "--student-contains",
+        default="",
+        help="When --pull is used, only pull entries where student contains this value",
+    )
+    db_sync_p.add_argument(
+        "--task-contains",
+        default="",
+        help="When --pull is used, only pull entries where task contains this value",
+    )
+    db_sync_p.add_argument(
+        "--status-contains",
+        default="",
+        help="When --pull is used, only pull entries where status contains this value",
+    )
+    db_sync_p.add_argument(
+        "--reviewer-contains",
+        default="",
+        help="When --pull is used, only pull entries where reviewer contains this value",
+    )
+    db_sync_p.add_argument(
+        "--pull-last-name-from",
+        default="",
+        help="When --pull is used, only pull students with last name >= this value",
+    )
+    db_sync_p.add_argument(
+        "--pull-last-name-to",
+        default="",
+        help="When --pull is used, only pull students with last name <= this value",
+    )
+    db_sync_p.add_argument(
+        "--issue-id",
+        type=int,
+        default=None,
+        help="When --pull is used, only pull entries with this issue ID",
+    )
+    db_sync_p.add_argument(
+        "--format",
+        "-f",
+        choices=["json", "table"],
+        default="json",
+        help="Output format for pulled entries",
+    )
+
+    db_pull_p = db_sub.add_parser("pull", help="Pull new entries from DB")
+    db_pull_p.add_argument(
+        "--db-file",
+        default="./queue_db.json",
+        help="Path to queue DB file",
+    )
+    db_pull_p.add_argument("--course", "-c", type=int, default=None, help="Optional course ID")
+    db_pull_p.add_argument("--limit", type=int, default=None, help="Limit number of entries")
+    db_pull_p.add_argument(
+        "--student-contains",
+        default="",
+        help="Only pull entries where student contains this value",
+    )
+    db_pull_p.add_argument(
+        "--task-contains",
+        default="",
+        help="Only pull entries where task contains this value",
+    )
+    db_pull_p.add_argument(
+        "--status-contains",
+        default="",
+        help="Only pull entries where status contains this value",
+    )
+    db_pull_p.add_argument(
+        "--reviewer-contains",
+        default="",
+        help="Only pull entries where reviewer contains this value",
+    )
+    db_pull_p.add_argument(
+        "--last-name-from",
+        default="",
+        help="Only pull students with last name >= this value",
+    )
+    db_pull_p.add_argument(
+        "--last-name-to",
+        default="",
+        help="Only pull students with last name <= this value",
+    )
+    db_pull_p.add_argument(
+        "--issue-id",
+        type=int,
+        default=None,
+        help="Only pull entries with this issue ID",
+    )
+    db_pull_p.add_argument(
+        "--format",
+        "-f",
+        choices=["json", "table"],
+        default="json",
+        help="Output format",
+    )
+
+    db_process_p = db_sub.add_parser("process", help="Mark pulled entry as processed")
+    db_process_p.add_argument("--db-file", default="./queue_db.json", help="Path to queue DB file")
+    db_process_p.add_argument("--course", "-c", type=int, required=True, help="Course ID")
+    db_process_p.add_argument("--student-key", required=True, help="Student key from pull payload")
+    db_process_p.add_argument(
+        "--assignment-key",
+        required=True,
+        help="Assignment key from pull payload",
+    )
+
+    db_write_p = db_sub.add_parser("write", help="Append write event to issue chain")
+    db_write_p.add_argument("--db-file", default="./queue_db.json", help="Path to queue DB file")
+    db_write_p.add_argument("--course", "-c", type=int, required=True, help="Course ID")
+    db_write_p.add_argument("--issue-id", type=int, required=True, help="Issue ID")
+    db_write_p.add_argument(
+        "--action",
+        required=True,
+        help="Action name (e.g. grade, status, reviewer)",
+    )
+    db_write_p.add_argument("--value", required=True, help="Action value")
+    db_write_p.add_argument("--author", default="", help="Author performing write")
+    db_write_p.add_argument("--note", default="", help="Optional note")
+
+    serve_p = subparsers.add_parser("serve", help="Start HTTP API server")
+    serve_p.add_argument("--host", default="127.0.0.1", help="Bind host (default: 127.0.0.1)")
+    serve_p.add_argument("--port", type=int, default=8000, help="Bind port (default: 8000)")
+    serve_p.add_argument(
+        "--session-file",
+        default=None,
+        help="Session file to load on startup",
+    )
+    serve_p.add_argument(
+        "--reload",
+        action="store_true",
+        default=False,
+        help="Enable auto-reload (development only)",
     )
 
     settings_p = subparsers.add_parser("settings", help="Manage saved defaults")
@@ -639,28 +817,43 @@ def _run_course(args: argparse.Namespace, client: AnytaskClient) -> None:
 
 def _parse_ajax_entry(row: dict[str, object]) -> QueueEntry:
     """Convert AJAX row to ``QueueEntry``."""
-    return QueueEntry(
-        student_name=str(row.get("student_name", "")),
-        student_url=str(row.get("student_url", "")),
-        task_title=str(row.get("task_title", "")),
-        update_time=str(row.get("update_time", "")),
-        mark=str(row.get("mark", "")),
-        status_color=str(row.get("status_color", "")),
-        status_name=str(row.get("status_name", "")),
-        responsible_name=str(row.get("responsible_name", "")),
-        responsible_url=str(row.get("responsible_url", "")),
-        has_issue_access=bool(row.get("has_issue_access", False)),
-        issue_url=str(row.get("issue_url", "")),
+    from anytask_scraper._queue_helpers import parse_ajax_entry
+
+    return parse_ajax_entry(row)
+
+
+def _filter_queue_entries(
+    entries: list[QueueEntry],
+    *,
+    filter_task: str = "",
+    filter_reviewer: str = "",
+    filter_status: str = "",
+    last_name_from: str = "",
+    last_name_to: str = "",
+) -> list[QueueEntry]:
+    from anytask_scraper._queue_helpers import filter_queue_entries
+
+    return filter_queue_entries(
+        entries,
+        filter_task=filter_task,
+        filter_reviewer=filter_reviewer,
+        filter_status=filter_status,
+        last_name_from=last_name_from,
+        last_name_to=last_name_to,
     )
 
 
-def _run_queue(args: argparse.Namespace, client: AnytaskClient) -> None:
-    course_id = args.course
-    output_dir = _resolve_output_dir(args)
-
-    if args.download_files:
-        args.deep = True
-
+def _fetch_review_queue(
+    client: AnytaskClient,
+    *,
+    course_id: int,
+    filter_task: str = "",
+    filter_reviewer: str = "",
+    filter_status: str = "",
+    last_name_from: str = "",
+    last_name_to: str = "",
+    deep: bool = False,
+) -> tuple[ReviewQueue, int]:
     with console.status("[bold blue]Fetching queue page..."):
         queue_html = client.fetch_queue_page(course_id)
         csrf = extract_csrf_from_queue_page(queue_html)
@@ -672,32 +865,17 @@ def _run_queue(args: argparse.Namespace, client: AnytaskClient) -> None:
         raw_entries = client.fetch_all_queue_entries(course_id, csrf)
 
     entries = [_parse_ajax_entry(row) for row in raw_entries]
-
-    if args.filter_task:
-        needle = args.filter_task.lower()
-        entries = [e for e in entries if needle in e.task_title.lower()]
-    if args.filter_reviewer:
-        needle = args.filter_reviewer.lower()
-        entries = [e for e in entries if needle in e.responsible_name.lower()]
-    if args.filter_status:
-        needle = args.filter_status.lower()
-        entries = [e for e in entries if needle in e.status_name.lower()]
-    if args.last_name_from or args.last_name_to:
-        from anytask_scraper.models import last_name_in_range
-        entries = [
-            e for e in entries
-            if last_name_in_range(e.student_name, args.last_name_from, args.last_name_to)
-        ]
-
-    queue = ReviewQueue(course_id=course_id, entries=entries)
-
-    _print_ok(
-        args,
-        f"Queue: {len(entries)} entries"
-        + (f" (filtered from {len(raw_entries)})" if len(entries) != len(raw_entries) else ""),
+    entries = _filter_queue_entries(
+        entries,
+        filter_task=filter_task,
+        filter_reviewer=filter_reviewer,
+        filter_status=filter_status,
+        last_name_from=last_name_from,
+        last_name_to=last_name_to,
     )
 
-    if args.deep:
+    queue = ReviewQueue(course_id=course_id, entries=entries)
+    if deep:
         accessible = [e for e in entries if e.has_issue_access and e.issue_url]
         with console.status(f"[bold blue]Fetching {len(accessible)} submissions..."):
             for entry in accessible:
@@ -712,6 +890,35 @@ def _run_queue(args: argparse.Namespace, client: AnytaskClient) -> None:
                     err_console.print(
                         f"[yellow]Warning:[/yellow] Could not fetch {entry.issue_url}: {e}"
                     )
+
+    return queue, len(raw_entries)
+
+
+def _run_queue(args: argparse.Namespace, client: AnytaskClient) -> None:
+    course_id = args.course
+    output_dir = _resolve_output_dir(args)
+
+    if args.download_files:
+        args.deep = True
+
+    queue, raw_total = _fetch_review_queue(
+        client,
+        course_id=course_id,
+        filter_task=args.filter_task or "",
+        filter_reviewer=args.filter_reviewer or "",
+        filter_status=args.filter_status or "",
+        last_name_from=args.last_name_from,
+        last_name_to=args.last_name_to,
+        deep=args.deep,
+    )
+    entries = queue.entries
+
+    _print_ok(
+        args,
+        f"Queue: {len(entries)} entries"
+        + (f" (filtered from {raw_total})" if len(entries) != raw_total else ""),
+    )
+    if args.deep:
         _print_ok(args, f"Fetched {len(queue.submissions)} submissions")
 
     if args.download_files:
@@ -751,6 +958,147 @@ def _run_queue(args: argparse.Namespace, client: AnytaskClient) -> None:
         if queue.submissions:
             for sub in queue.submissions.values():
                 display_submission(sub, console)
+
+
+def _print_pulled_entries(entries: list[dict[str, Any]], output_format: str) -> None:
+    if output_format == "json":
+        console.print_json(data=entries)
+        return
+
+    table = Table(title="Pulled Queue Entries")
+    table.add_column("Course")
+    table.add_column("Student Key")
+    table.add_column("Assignment Key")
+    table.add_column("Student")
+    table.add_column("Task")
+    table.add_column("Status")
+    table.add_column("Grade")
+    table.add_column("Reviewer")
+
+    for item in entries:
+        table.add_row(
+            str(item.get("course_id", "")),
+            str(item.get("student_key", "")),
+            str(item.get("assignment_key", "")),
+            str(item.get("student_name", "")),
+            str(item.get("task_title", "")),
+            str(item.get("status", "")),
+            str(item.get("grade", "")),
+            str(item.get("reviewer", "")),
+        )
+    console.print(table)
+
+
+def _run_db_sync(args: argparse.Namespace, client: AnytaskClient) -> None:
+    queue, raw_total = _fetch_review_queue(
+        client,
+        course_id=args.course,
+        filter_task=args.filter_task,
+        filter_reviewer=args.filter_reviewer,
+        filter_status=args.filter_status,
+        last_name_from=args.last_name_from,
+        last_name_to=args.last_name_to,
+        deep=args.deep,
+    )
+
+    db = QueueJsonDB(args.db_file)
+    newly_flagged = db.sync_queue(queue, course_title=args.course_title)
+    console.print(
+        "[green][OK][/green] "
+        f"Synced DB -> {args.db_file} | course={args.course} | entries={len(queue.entries)}"
+        + (f" (filtered from {raw_total})" if len(queue.entries) != raw_total else "")
+        + f" | new_or_updated={newly_flagged}"
+    )
+
+    if args.pull:
+        pulled = db.pull_new_entries(
+            course_id=args.course,
+            limit=args.limit,
+            student_contains=args.student_contains,
+            task_contains=args.task_contains,
+            status_contains=args.status_contains,
+            reviewer_contains=args.reviewer_contains,
+            last_name_from=args.pull_last_name_from,
+            last_name_to=args.pull_last_name_to,
+            issue_id=args.issue_id,
+        )
+        console.print(f"[green][OK][/green] Pulled {len(pulled)} new entries")
+        _print_pulled_entries(pulled, args.format)
+
+
+def _run_db_pull(args: argparse.Namespace) -> None:
+    db = QueueJsonDB(args.db_file)
+    pulled = db.pull_new_entries(
+        course_id=args.course,
+        limit=args.limit,
+        student_contains=args.student_contains,
+        task_contains=args.task_contains,
+        status_contains=args.status_contains,
+        reviewer_contains=args.reviewer_contains,
+        last_name_from=args.last_name_from,
+        last_name_to=args.last_name_to,
+        issue_id=args.issue_id,
+    )
+    console.print(f"[green][OK][/green] Pulled {len(pulled)} new entries from {args.db_file}")
+    _print_pulled_entries(pulled, args.format)
+
+
+def _run_db_process(args: argparse.Namespace) -> None:
+    db = QueueJsonDB(args.db_file)
+    ok = db.mark_entry_processed(
+        course_id=args.course,
+        student_key=args.student_key,
+        assignment_key=args.assignment_key,
+    )
+    if not ok:
+        err_console.print("[bold red]Error:[/bold red] Entry not found in DB")
+        sys.exit(1)
+    console.print(
+        "[green][OK][/green] "
+        f"Marked processed: course={args.course}, student_key={args.student_key}, "
+        f"assignment_key={args.assignment_key}"
+    )
+
+
+def _run_db_write(args: argparse.Namespace) -> None:
+    db = QueueJsonDB(args.db_file)
+    ok = db.record_issue_write(
+        course_id=args.course,
+        issue_id=args.issue_id,
+        action=args.action,
+        value=args.value,
+        author=args.author,
+        note=args.note,
+    )
+    if not ok:
+        err_console.print(
+            "[bold red]Error:[/bold red] Could not locate assignment for "
+            f"course={args.course}, issue_id={args.issue_id}"
+        )
+        sys.exit(1)
+    console.print(
+        "[green][OK][/green] "
+        f"Appended write event: course={args.course}, issue_id={args.issue_id}, "
+        f"action={args.action}, value={args.value}"
+    )
+
+
+def _run_db(args: argparse.Namespace, client: AnytaskClient | None = None) -> None:
+    if args.db_action == "sync":
+        if client is None:
+            raise ValueError("db sync requires authenticated client")
+        _run_db_sync(args, client)
+        return
+    if args.db_action == "pull":
+        _run_db_pull(args)
+        return
+    if args.db_action == "process":
+        _run_db_process(args)
+        return
+    if args.db_action == "write":
+        _run_db_write(args)
+        return
+    raise ValueError(f"Unsupported db action: {args.db_action}")
 
 
 def _run_gradebook(args: argparse.Namespace, client: AnytaskClient) -> None:
@@ -806,6 +1154,32 @@ def _run_gradebook(args: argparse.Namespace, client: AnytaskClient) -> None:
         display_gradebook(gradebook, console)
 
 
+def _run_serve(args: argparse.Namespace) -> None:
+    try:
+        import uvicorn
+
+        from anytask_scraper.api import create_app
+    except ImportError:
+        err_console.print(
+            "[bold red]Error:[/bold red] API extras not installed. "
+            "Run: pip install 'anytask-scraper[api]'"
+        )
+        sys.exit(1)
+
+    session_file = getattr(args, "session_file", None)
+    if args.reload:
+        uvicorn.run(
+            "anytask_scraper.api.server:create_app",
+            factory=True,
+            host=args.host,
+            port=args.port,
+            reload=True,
+        )
+    else:
+        app = create_app(session_file)
+        uvicorn.run(app, host=args.host, port=args.port)
+
+
 def main(argv: list[str] | None = None) -> None:
     parser = _build_parser()
     args = parser.parse_args(argv)
@@ -830,11 +1204,23 @@ def main(argv: list[str] | None = None) -> None:
         run(debug=debug)
         return
 
+    if args.command == "serve":
+        _run_serve(args)
+        return
+
     try:
         _merge_runtime_settings(args, settings)
     except Exception as e:
         err_console.print(f"[bold red]Settings error:[/bold red] {e}")
         sys.exit(1)
+
+    if args.command == "db" and args.db_action in {"pull", "process", "write"}:
+        try:
+            _run_db(args, client=None)
+            return
+        except Exception as e:
+            err_console.print(f"[bold red]Error:[/bold red] {e}")
+            sys.exit(1)
 
     username, password = _resolve_credentials(args, parser)
 
@@ -863,6 +1249,8 @@ def main(argv: list[str] | None = None) -> None:
                 _run_gradebook(args, client)
             elif args.command == "queue":
                 _run_queue(args, client)
+            elif args.command == "db":
+                _run_db(args, client)
 
             if args.session_file and args.save_session:
                 client.save_session(args.session_file)

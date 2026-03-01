@@ -3,9 +3,15 @@
 ## 1. Установка
 
 ```bash
-git clone https://github.com/Coldish-elf/anytask_scraper
+pip install git+https://github.com/Coldish-elf/anytask_scraper.git
+```
+
+Для разработки:
+
+```bash
+git clone https://github.com/Coldish-elf/anytask_scraper.git
 cd anytask_scraper
-pip install -e .
+pip install -e ".[dev]"
 ```
 
 Проверка:

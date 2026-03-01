@@ -68,7 +68,7 @@ anytask-scraper tui
 
 Выбираются:
 
-- тип данных: `Tasks`, `Queue`, `Submissions`, `Gradebook`
+- тип данных: `Tasks`, `Queue`, `Submissions`, `Gradebook`, `DB`
 - формат: `JSON`, `Markdown`, `CSV`, `Files Only`
 - колонки через `ParameterSelector`
 - фильтры строк (включая диапазон фамилий `From/To`)

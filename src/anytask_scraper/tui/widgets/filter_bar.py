@@ -1,5 +1,3 @@
-"""Composite filter bar widgets for Tasks and Queue tabs."""
-
 from __future__ import annotations
 
 from dataclasses import dataclass

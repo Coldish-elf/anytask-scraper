@@ -4,8 +4,10 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "anytask-scraper"
-version = "0.8.0"
-description = "Scraper for anytask.org"
+version = "0.9.0"
+description = "CLI, TUI and Python library for anytask.org"
+readme = "README.md"
+license = {text = "MIT"}
 requires-python = ">=3.10"
 dependencies = [
     "httpx>=0.27",
@@ -15,16 +17,26 @@ dependencies = [
     "textual>=0.70",
 ]
 
+[project.urls]
+Homepage = "https://github.com/Coldish-elf/anytask_scraper"
+Repository = "https://github.com/Coldish-elf/anytask_scraper"
+Issues = "https://github.com/Coldish-elf/anytask_scraper/issues"
+
 [project.optional-dependencies]
 dev = [
     "pytest>=8.0",
     "ruff>=0.4",
     "mypy>=1.10",
 ]
+api = [
+    "fastapi>=0.111",
+    "uvicorn[standard]>=0.30",
+]
 
 [project.scripts]
 anytask-scraper = "anytask_scraper.cli:main"
 anytask-tui = "anytask_scraper.tui:run"
+anytask-api = "anytask_scraper.api:run_server"
 
 [tool.ruff]
 target-version = "py310"

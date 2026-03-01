@@ -251,6 +251,46 @@ AnytaskClient(username: str = "", password: str = "")
 
 `columns` в функциях экспорта ограничивает набор полей выходного файла.
 
+## JSON DB для очереди
+
+`QueueJsonDB(path, autosave=True)` хранит локальную JSON-базу со строгой структурой:
+
+- `courses -> students -> assignments -> files`
+- для каждой assignment ведёт `issue_chain` (события очереди, комментарии, system events, write-операции).
+
+Ключевые методы:
+
+- `sync_queue(queue, course_title="") -> int` - синхронизирует `ReviewQueue` в базу, возвращает число новых/обновлённых assignment, помеченных как `new`.
+- `pull_new_entries(course_id=None, limit=None, student_contains="", task_contains="", status_contains="", reviewer_contains="", last_name_from="", last_name_to="", issue_id=None) -> list[dict]` - достает только подходящие новые assignment и атомарно переводит их в состояние `pulled`.
+- `mark_entry_processed(course_id, student_key, assignment_key) -> bool` - переводит запись в `processed`.
+- `record_issue_write(course_id, issue_id, action, value, author="", note="") -> bool` - пишет действие в `issue_chain` (например grading/status update).
+- `snapshot() -> dict` - копия текущего JSON payload.
+- `save()` - принудительное сохранение на диск.
+
+Минимальный пример:
+
+```python
+from anytask_scraper import QueueJsonDB, ReviewQueue
+
+db = QueueJsonDB("./output/queue_db.json")
+queue = ReviewQueue(course_id=1250)
+db.sync_queue(queue, course_title="Python")
+
+batch = db.pull_new_entries(
+    course_id=1250,
+    limit=20,
+    student_contains="alice",
+    status_contains="review",
+)
+for item in batch:
+    print(item["student_name"], item["task_title"])
+    db.mark_entry_processed(
+        course_id=item["course_id"],
+        student_key=item["student_key"],
+        assignment_key=item["assignment_key"],
+    )
+```
+
 ## Отрисовка в терминал (Rich)
 
 | Функция | Назначение |

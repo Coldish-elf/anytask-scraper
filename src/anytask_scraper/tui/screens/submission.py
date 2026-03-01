@@ -1,5 +1,3 @@
-"""Full-screen submission detail view."""
-
 from __future__ import annotations
 
 from textual import events

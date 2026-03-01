@@ -1,5 +1,3 @@
-"""Logging configuration for anytask-scraper."""
-
 from __future__ import annotations
 
 import logging

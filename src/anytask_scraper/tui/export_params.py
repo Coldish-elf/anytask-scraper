@@ -1,5 +1,3 @@
-"""Export parameter definitions for different export types."""
-
 from __future__ import annotations
 
 from dataclasses import dataclass

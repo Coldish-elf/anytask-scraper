@@ -1,5 +1,3 @@
-"""Persistence helpers."""
-
 from __future__ import annotations
 
 import csv
@@ -533,7 +531,10 @@ def download_submission_files(
 
     for comment in submission.comments:
         for file_att in comment.files:
-            dest = student_dir / file_att.filename
+            safe_name = Path(file_att.filename).name
+            if not safe_name:
+                safe_name = f"file_{submission.issue_id}"
+            dest = student_dir / safe_name
             result = client.download_file(file_att.download_url, str(dest))
             if result.success:
                 downloaded[file_att.filename] = dest

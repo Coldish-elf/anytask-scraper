@@ -140,7 +140,7 @@ class AnytaskClient:
         return True
 
     def save_session(self, session_path: Path | str) -> None:
-        """Save cookie session to file."""
+        """Save cookie session to file with restrictive permissions."""
         logger.info("Saving session to %s", session_path)
         path = Path(session_path)
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -160,7 +160,14 @@ class AnytaskClient:
             "username": self.username,
             "cookies": cookies,
         }
-        path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+        import os
+        import stat
+
+        fd = os.open(str(path), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, stat.S_IRUSR | stat.S_IWUSR)
+        try:
+            os.write(fd, json.dumps(payload, indent=2, ensure_ascii=False).encode("utf-8"))
+        finally:
+            os.close(fd)
 
     def fetch_course_page(self, course_id: int) -> str:
         """Return course page HTML."""
@@ -258,10 +265,15 @@ class AnytaskClient:
         resp = self._request("GET", url)
         return resp.text
 
+    @staticmethod
+    def _is_login_redirect(resp: httpx.Response) -> bool:
+        """Check if response was redirected to login page (URL only, no body read)."""
+        return "/accounts/login/" in str(resp.url)
+
     def _download_to_file(self, url: str, dest: Path) -> httpx.Response:
         """Stream download to file, handling login redirects."""
         with self._client.stream("GET", url) as resp:
-            if self._is_login_response(resp):
+            if self._is_login_redirect(resp):
                 self._authenticated = False
                 if not self._has_credentials():
                     raise LoginError("Saved session expired and no credentials were provided")

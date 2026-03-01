@@ -1,5 +1,3 @@
-"""anytask_scraper: Scraper for anytask.org."""
-
 from anytask_scraper._logging import setup_logging
 from anytask_scraper.client import AnytaskClient, DownloadResult, LoginError
 from anytask_scraper.display import (
@@ -9,6 +7,7 @@ from anytask_scraper.display import (
     display_submission,
     display_task_detail,
 )
+from anytask_scraper.json_db import QueueJsonDB
 from anytask_scraper.models import (
     Comment,
     Course,
@@ -65,6 +64,7 @@ __all__ = [
     "ProfileCourseEntry",
     "QueueEntry",
     "QueueFilters",
+    "QueueJsonDB",
     "ReviewQueue",
     "Submission",
     "Task",

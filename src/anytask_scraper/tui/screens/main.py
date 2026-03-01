@@ -1,14 +1,16 @@
-"""Unified main screen for anytask-scraper TUI - tabbed layout."""
-
 from __future__ import annotations
 
+import csv
+import io
 import logging
 import re
+import tempfile
 import unicodedata
 from contextlib import suppress
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, cast
+from uuid import uuid4
 
 import httpx
 from rich.text import Text
@@ -31,6 +33,7 @@ from textual.widgets import (
 )
 from textual.widgets.option_list import Option
 
+from anytask_scraper.json_db import QueueJsonDB
 from anytask_scraper.models import (
     Course,
     Gradebook,
@@ -90,6 +93,14 @@ from anytask_scraper.tui.widgets.filter_bar import (
 from anytask_scraper.tui.widgets.param_selector import ParameterSelector
 
 logger = logging.getLogger(__name__)
+
+
+def _csv_row(fields: list[str]) -> str:
+    """Format a list of fields as a properly quoted CSV row."""
+    buf = io.StringIO()
+    csv.writer(buf).writerow(fields)
+    return buf.getvalue().rstrip("\r\n")
+
 
 _STATUS_STYLES: dict[str, str] = {
     "Зачтено": "bold green",
@@ -353,6 +364,7 @@ class MainScreen(Screen[None]):
                                 yield RadioButton("Queue", id="queue-export-radio")
                                 yield RadioButton("Submissions", id="subs-export-radio")
                                 yield RadioButton("Gradebook", id="gb-export-radio")
+                                yield RadioButton("DB", id="db-export-radio")
                         with Container(classes="export-section"):
                             yield Label("Format", classes="export-section-title")
                             with RadioSet(id="format-set"):
@@ -1192,14 +1204,15 @@ class MainScreen(Screen[None]):
         self.query_one("#gb-filter-bar", GradebookFilterBar).reset()
         self._rebuild_gradebook_table([])
         self.query_one("#gradebook-info-label", Label).update("Select a course to view gradebook")
-
         self._set_export_status("")
 
         try:
             queue_export_radio = self.query_one("#queue-export-radio", RadioButton)
             subs_export_radio = self.query_one("#subs-export-radio", RadioButton)
+            db_export_radio = self.query_one("#db-export-radio", RadioButton)
             queue_export_radio.disabled = not self.is_teacher_view
             subs_export_radio.disabled = not self.is_teacher_view
+            db_export_radio.disabled = not self.is_teacher_view
         except Exception:
             logger.debug("Failed to update export radio buttons", exc_info=True)
 
@@ -1561,16 +1574,27 @@ class MainScreen(Screen[None]):
             self._export_filter_prompts["#export-filter-task"] = "Group"
             self._export_filter_prompts["#export-filter-status"] = "N/A"
             self._export_filter_prompts["#export-filter-reviewer"] = "Teacher"
+        elif export_type == "db-export-radio":
+            self._export_filter_prompts["#export-filter-task"] = "Task"
+            self._export_filter_prompts["#export-filter-status"] = "Status"
+            self._export_filter_prompts["#export-filter-reviewer"] = "Reviewer"
         else:
             self._export_filter_prompts["#export-filter-task"] = "Task"
             self._export_filter_prompts["#export-filter-status"] = "Status"
             self._export_filter_prompts["#export-filter-reviewer"] = "Reviewer"
 
-        try:
-            files_radio = self.query_one("#files-radio", RadioButton)
-            files_radio.disabled = export_type != "subs-export-radio"
-        except Exception:
-            logger.debug("Failed to update files radio", exc_info=True)
+        is_db_export = export_type == "db-export-radio"
+        with suppress(Exception):
+            self.query_one("#md-radio", RadioButton).disabled = is_db_export
+        with suppress(Exception):
+            self.query_one("#csv-radio", RadioButton).disabled = is_db_export
+        with suppress(Exception):
+            self.query_one("#files-radio", RadioButton).disabled = (
+                export_type != "subs-export-radio" or is_db_export
+            )
+        if is_db_export:
+            with suppress(Exception):
+                self.query_one("#json-radio", RadioButton).value = True
         try:
             include_files_set = self.query_one("#export-include-files-set", RadioSet)
             include_files_set.disabled = export_type != "subs-export-radio"
@@ -1602,7 +1626,7 @@ class MainScreen(Screen[None]):
                 enabled=bool(sections if self.is_teacher_view else statuses),
             )
             self._set_export_filter_options(reviewer_select, [], set(), enabled=False)
-        elif export_type in ("queue-export-radio", "subs-export-radio"):
+        elif export_type in ("queue-export-radio", "subs-export-radio", "db-export-radio"):
             tasks = sorted({e.task_title for e in self.all_queue_entries if e.task_title})
             statuses = sorted({e.status_name for e in self.all_queue_entries if e.status_name})
             reviewers = sorted(
@@ -1747,6 +1771,8 @@ class MainScreen(Screen[None]):
             return bool(self.all_queue_entries)
         if export_type == "gb-export-radio":
             return bool(self.all_gradebook_groups)
+        if export_type == "db-export-radio":
+            return bool(self.all_queue_entries)
         return True
 
     def _get_current_export_filters(self) -> dict[str, ExportFilterValue]:
@@ -1762,7 +1788,7 @@ class MainScreen(Screen[None]):
                     filters["task"] = task_vals
                 if status_vals:
                     filters["section" if self.is_teacher_view else "status"] = status_vals
-            elif export_type in ("queue-export-radio", "subs-export-radio"):
+            elif export_type in ("queue-export-radio", "subs-export-radio", "db-export-radio"):
                 if task_vals:
                     filters["task"] = task_vals
                 if status_vals:
@@ -1807,6 +1833,8 @@ class MainScreen(Screen[None]):
                     if t not in all_tasks:
                         all_tasks.append(t)
             params = gradebook_params(all_tasks)
+        elif export_type == "db-export-radio":
+            params = []
         else:
             params = []
 
@@ -1886,6 +1914,8 @@ class MainScreen(Screen[None]):
             return
         if export_type == "subs-export-radio" and not self.is_teacher_view:
             return
+        if export_type == "db-export-radio" and not self.is_teacher_view:
+            return
         self._export_preload_token += 1
         token = self._export_preload_token
         if export_type == "queue-export-radio":
@@ -1906,6 +1936,12 @@ class MainScreen(Screen[None]):
                 "[dim]Loading gradebook data...[/dim]"
             )
             self._preload_export_data(export_type, course_id, token)
+        elif export_type == "db-export-radio":
+            self._set_export_status("Loading queue data for DB export...", "info")
+            self.query_one("#export-preview-content", Static).update(
+                "[dim]Loading queue data for DB export...[/dim]"
+            )
+            self._preload_export_data(export_type, course_id, token)
 
     @work(thread=True)
     def _preload_export_data(self, export_type: str, course_id: int, token: int) -> None:
@@ -1915,6 +1951,9 @@ class MainScreen(Screen[None]):
             if export_type in ("queue-export-radio", "subs-export-radio"):
                 queue = self._load_queue_for_export(course_id)
                 loaded_message = f"Queue loaded: {len(queue.entries)} entries"
+            elif export_type == "db-export-radio":
+                queue = self._load_queue_for_export(course_id)
+                loaded_message = f"Queue loaded for DB export: {len(queue.entries)} entries"
             elif export_type == "gb-export-radio":
                 gradebook = self._load_gradebook_for_export(course_id)
                 total = sum(len(g.entries) for g in gradebook.groups)
@@ -1989,7 +2028,7 @@ class MainScreen(Screen[None]):
             return "[dim]Select a course first[/dim]"
 
         course_id = self._selected_course_id
-        max_items = 2
+        max_items = 5
         included = self._get_included_columns()
         filters = self._get_current_export_filters()
         task_filters = _extract_filter_values(filters, "task")
@@ -2108,6 +2147,63 @@ class MainScreen(Screen[None]):
             return self._preview_submissions(
                 sub_entries[:max_items], format_type, course_id, len(sub_entries), included
             )
+        elif export_type == "db-export-radio":
+            queue_entries = list(self.all_queue_entries)
+            queue_payload = self.app.queue_cache.get(  # type: ignore[attr-defined]
+                course_id,
+                ReviewQueue(course_id=course_id),
+            )
+            if not queue_entries:
+                queue_entries = list(queue_payload.entries)
+            if task_filters:
+                queue_entries = [e for e in queue_entries if e.task_title in task_filters]
+            if status_filters:
+                queue_entries = [e for e in queue_entries if e.status_name in status_filters]
+            if reviewer_filters:
+                queue_entries = [e for e in queue_entries if e.responsible_name in reviewer_filters]
+            if last_name_from or last_name_to:
+                queue_entries = [
+                    e
+                    for e in queue_entries
+                    if last_name_in_range(
+                        e.student_name,
+                        last_name_from,
+                        last_name_to,
+                    )
+                ]
+            if format_type != "json":
+                return "[dim]DB export supports JSON format only[/dim]"
+            import json as json_mod
+
+            preview_issue_urls = {e.issue_url for e in queue_entries[:max_items] if e.issue_url}
+            preview_submissions = {
+                issue_url: sub
+                for issue_url, sub in queue_payload.submissions.items()
+                if issue_url in preview_issue_urls
+            }
+            preview_queue = ReviewQueue(
+                course_id=course_id,
+                entries=list(queue_entries[:max_items]),
+                submissions=preview_submissions,
+            )
+            course = self.app.courses.get(course_id)  # type: ignore[attr-defined]
+            preview_db = QueueJsonDB(
+                Path(tempfile.gettempdir()) / f"anytask_preview_{course_id}_{uuid4().hex}.json",
+                autosave=False,
+            )
+            preview_db.sync_queue(preview_queue, course_title=course.title if course else "")
+            payload = {
+                "schema_version": 1,
+                "course_id": course_id,
+                "filtered_queue_entries": len(queue_entries),
+                "preview_sample_size": min(len(queue_entries), max_items),
+                "hierarchy": "courses -> students -> assignments -> files",
+                "issue_chain": "enabled",
+                "snapshot_preview": preview_db.snapshot(),
+            }
+            preview = json_mod.dumps(payload, indent=2, ensure_ascii=False)
+            name = self._resolve_export_filename(f"queue_db_{course_id}.json")
+            return f"[bold]{name}[/bold]\n{preview}"
 
         return "[dim]Select export type[/dim]"
 
@@ -2165,7 +2261,7 @@ class MainScreen(Screen[None]):
                     header_parts.append("Status")
             if not included or "Deadline" in included:
                 header_parts.append("Deadline")
-            lines = [",".join(header_parts)]
+            lines = [_csv_row(header_parts)]
             for i, t in enumerate(tasks, 1):
                 row_parts = []
                 if not included or "#" in included:
@@ -2186,7 +2282,7 @@ class MainScreen(Screen[None]):
                 if not included or "Deadline" in included:
                     dl = t.deadline.strftime("%d.%m.%Y") if t.deadline else "-"
                     row_parts.append(dl)
-                lines.append(",".join(row_parts))
+                lines.append(_csv_row(row_parts))
             name = self._resolve_export_filename(f"course_{course_id}.csv")
             return f"[bold]{name}[/bold]\n" + "\n".join(lines) + suffix
 
@@ -2255,7 +2351,7 @@ class MainScreen(Screen[None]):
                 header_parts.append("Updated")
             if not included or "Grade" in included:
                 header_parts.append("Grade")
-            lines = [",".join(header_parts)]
+            lines = [_csv_row(header_parts)]
             for i, e in enumerate(entries, 1):
                 row_parts = []
                 if not included or "#" in included:
@@ -2272,7 +2368,7 @@ class MainScreen(Screen[None]):
                     row_parts.append(e.update_time)
                 if not included or "Grade" in included:
                     row_parts.append(e.mark)
-                lines.append(",".join(row_parts))
+                lines.append(_csv_row(row_parts))
             name = self._resolve_export_filename(f"queue_{course_id}.csv")
             return f"[bold]{name}[/bold]\n" + "\n".join(lines) + suffix
 
@@ -2355,7 +2451,7 @@ class MainScreen(Screen[None]):
                 header_parts.append("Deadline")
             if not included or "Comments" in included:
                 header_parts.append("Comments")
-            lines = [",".join(header_parts)]
+            lines = [_csv_row(header_parts)]
             for e in entries:
                 row_parts = []
                 if not included or "Issue ID" in included:
@@ -2376,7 +2472,7 @@ class MainScreen(Screen[None]):
                     row_parts.append("-")
                 if not included or "Comments" in included:
                     row_parts.append("0")
-                lines.append(",".join(row_parts))
+                lines.append(_csv_row(row_parts))
             name = self._resolve_export_filename(f"submissions_{course_id}.csv")
             return f"[bold]{name}[/bold]\n" + "\n".join(lines) + suffix
 
@@ -2458,7 +2554,7 @@ class MainScreen(Screen[None]):
                     header_parts.append(t)
             if not included or "Total" in included:
                 header_parts.append("Total")
-            lines = [",".join(header_parts)]
+            lines = [_csv_row(header_parts)]
             count = 0
             for g in groups:
                 for e in g.entries[:2]:
@@ -2472,7 +2568,7 @@ class MainScreen(Screen[None]):
                             row_parts.append(str(e.scores.get(t, "")))
                     if not included or "Total" in included:
                         row_parts.append(str(e.total_score))
-                    lines.append(",".join(row_parts))
+                    lines.append(_csv_row(row_parts))
                     count += 1
                     if count >= 2:
                         break
@@ -2544,6 +2640,9 @@ class MainScreen(Screen[None]):
                 "Enable 'Include files (Submissions)' for Files Only export",
                 "error",
             )
+            return
+        if export_type == "db-export-radio" and fmt != "json":
+            self._set_export_status("DB export supports JSON format only", "error")
             return
         self._set_export_status(f"Exporting to {output_path}...", "info")
         self._do_export(
@@ -2798,6 +2897,57 @@ class MainScreen(Screen[None]):
                     "success",
                 )
                 return
+            elif export_type == "db-export-radio":
+                if fmt != "json":
+                    self.app.call_from_thread(
+                        self._set_export_status,
+                        "DB export supports JSON format only",
+                        "error",
+                    )
+                    return
+                queue = self._load_queue_for_export(course_id)
+                entries = list(queue.entries)
+                if task_filters:
+                    entries = [e for e in entries if e.task_title in task_filters]
+                if status_filters:
+                    entries = [e for e in entries if e.status_name in status_filters]
+                if reviewer_filters:
+                    entries = [e for e in entries if e.responsible_name in reviewer_filters]
+                if last_name_from or last_name_to:
+                    entries = [
+                        e
+                        for e in entries
+                        if last_name_in_range(
+                            e.student_name,
+                            last_name_from,
+                            last_name_to,
+                        )
+                    ]
+                allowed_issue_urls = {e.issue_url for e in entries if e.issue_url}
+                submissions = {
+                    issue_url: sub
+                    for issue_url, sub in queue.submissions.items()
+                    if issue_url in allowed_issue_urls
+                }
+                filtered_queue = ReviewQueue(
+                    course_id=queue.course_id,
+                    entries=entries,
+                    submissions=submissions,
+                )
+                default_name = f"queue_db_{course_id}.json"
+                resolved_name = self._resolve_export_filename(default_name)
+                db_path = output_path / resolved_name
+                db = QueueJsonDB(db_path)
+                course = self.app.courses.get(course_id)  # type: ignore[attr-defined]
+                course_title = course.title if course else ""
+                newly_flagged = db.sync_queue(filtered_queue, course_title=course_title)
+                saved = db_path
+                self.app.call_from_thread(
+                    self._set_export_status,
+                    f"Saved: {saved.name} ({newly_flagged} new/updated)",
+                    "success",
+                )
+                return
             elif export_type == "gb-export-radio":
                 gradebook = self._load_gradebook_for_export(course_id)
 
@@ -2883,6 +3033,8 @@ class MainScreen(Screen[None]):
 
         queue_html = client.fetch_queue_page(course_id)
         csrf = extract_csrf_from_queue_page(queue_html)
+        if not csrf:
+            raise RuntimeError("Could not extract queue CSRF token")
         raw = client.fetch_all_queue_entries(course_id, csrf)
         entries = [
             QueueEntry(

@@ -139,6 +139,95 @@ anytask-scraper gradebook -c COURSE_ID [OPTIONS]
 
 Колонки: `Group`, `Student`, динамический набор задач, `Total`.
 
+## Команда `db`
+
+Локальная JSON-база для очереди с иерархией:
+`courses -> students -> assignments -> files` + `issue_chain`.
+
+```bash
+anytask-scraper db sync -c COURSE_ID [OPTIONS]
+anytask-scraper db pull [OPTIONS]
+anytask-scraper db process -c COURSE_ID --student-key KEY --assignment-key KEY [OPTIONS]
+anytask-scraper db write -c COURSE_ID --issue-id ISSUE_ID --action ACTION --value VALUE [OPTIONS]
+```
+
+### `db sync`
+
+Загружает очередь курса и синхронизирует DB.
+
+Опции:
+
+| Опция | Назначение |
+| --- | --- |
+| `-c`, `--course` | ID курса. |
+| `--db-file` | Путь к JSON DB (по умолчанию `./queue_db.json`). |
+| `--course-title` | Явный title курса для сохранения в DB. |
+| `--deep` | Догружает issue-страницы и пишет комментарии в `issue_chain`. |
+| `--filter-task` | Фильтр по задаче. |
+| `--filter-reviewer` | Фильтр по проверяющему. |
+| `--filter-status` | Фильтр по статусу. |
+| `--last-name-from` | Нижняя граница фамилии. |
+| `--last-name-to` | Верхняя граница фамилии. |
+| `--pull` | Сразу после sync выполнить pull новых записей. |
+| `--limit` | Ограничить число записей при `--pull`. |
+| `--student-contains` | При `--pull`: pull только по подстроке в имени студента (без учета регистра). |
+| `--task-contains` | При `--pull`: pull только по подстроке в названии задачи (без учета регистра). |
+| `--status-contains` | При `--pull`: pull только по подстроке в статусе (без учета регистра). |
+| `--reviewer-contains` | При `--pull`: pull только по подстроке в имени проверяющего (без учета регистра). |
+| `--pull-last-name-from` | При `--pull`: нижняя граница диапазона фамилий. |
+| `--pull-last-name-to` | При `--pull`: верхняя граница диапазона фамилий. |
+| `--issue-id` | При `--pull`: pull только по конкретному `issue_id`. |
+| `-f`, `--format json\|table` | Формат вывода pulled записей при `--pull`. |
+
+### `db pull`
+
+Вытягивает записи `queue_state == new` и помечает их как `pulled`.
+
+Опции:
+
+| Опция | Назначение |
+| --- | --- |
+| `--db-file` | Путь к JSON DB. |
+| `-c`, `--course` | Опционально ограничить конкретным курсом. |
+| `--limit` | Ограничить количество pulled записей. |
+| `--student-contains` | Pull только по подстроке в имени студента (без учета регистра). |
+| `--task-contains` | Pull только по подстроке в названии задачи (без учета регистра). |
+| `--status-contains` | Pull только по подстроке в статусе (без учета регистра). |
+| `--reviewer-contains` | Pull только по подстроке в имени проверяющего (без учета регистра). |
+| `--last-name-from` | Нижняя граница диапазона фамилий. |
+| `--last-name-to` | Верхняя граница диапазона фамилий. |
+| `--issue-id` | Pull только по конкретному `issue_id`. |
+| `-f`, `--format json\|table` | Формат вывода. |
+
+### `db process`
+
+Помечает pulled запись как `processed`.
+
+Опции:
+
+| Опция | Назначение |
+| --- | --- |
+| `--db-file` | Путь к JSON DB. |
+| `-c`, `--course` | ID курса. |
+| `--student-key` | `student_key` из `db pull`. |
+| `--assignment-key` | `assignment_key` из `db pull`. |
+
+### `db write`
+
+Добавляет write-событие в `issue_chain` (например grading/status update).
+
+Опции:
+
+| Опция | Назначение |
+| --- | --- |
+| `--db-file` | Путь к JSON DB. |
+| `-c`, `--course` | ID курса. |
+| `--issue-id` | Issue ID. |
+| `--action` | Тип действия (`grade`, `status`, `reviewer`, ...). |
+| `--value` | Новое значение. |
+| `--author` | Кто выполнил действие. |
+| `--note` | Дополнительная заметка. |
+
 ## Команда `settings`
 
 Управляет локальным файлом настроек.
@@ -181,4 +270,21 @@ anytask-scraper queue -c 11111 --download-files -o ./output
 
 # Ведомость только для одной группы и студентов с total >= 50
 anytask-scraper gradebook -c 11111 --filter-group IDK --min-score 50 -f markdown
+
+# Синхронизировать queue DB и сразу вытянуть 10 новых записей
+anytask-scraper db sync -c 11111 --db-file ./output/queue_db.json --pull --limit 10 -f table
+
+# Pull c фильтрами (вытягиваются только совпавшие записи, остальные остаются в `new`)
+anytask-scraper db pull --db-file ./output/queue_db.json -c 11111 \
+  --student-contains alice --task-contains "hw 1" \
+  --status-contains review --reviewer-contains bob \
+  --last-name-from a --last-name-to s --issue-id 421525 -f table
+
+# После обработки отметить запись processed
+anytask-scraper db process -c 11111 --db-file ./output/queue_db.json \
+  --student-key /users/alice/ --assignment-key issue:421525
+
+# Записать grading событие в issue_chain
+anytask-scraper db write -c 11111 --db-file ./output/queue_db.json \
+  --issue-id 421525 --action grade --value "10/10" --author "Bob"
 ```
