@@ -104,6 +104,7 @@ class Submission:
     grade: str = ""
     max_score: str = ""
     deadline: str = ""
+    issue_url: str = ""
     comments: list[Comment] = field(default_factory=list)
 
 
@@ -158,6 +159,32 @@ class Gradebook:
     groups: list[GradebookGroup] = field(default_factory=list)
 
 
+@dataclass
+class SubmissionForms:
+    """Metadata extracted from a submission page's write forms."""
+
+    csrf_token: str = ""
+    max_score: float | None = None
+    current_status: int = 0
+    status_options: list[tuple[int, str]] = field(default_factory=list)
+    issue_id: int = 0
+    has_grade_form: bool = False
+    has_status_form: bool = False
+    has_comment_form: bool = False
+    page_url: str = ""
+
+
+@dataclass
+class WriteResult:
+    """Result of a write operation (grade, status, or comment)."""
+
+    success: bool
+    action: str
+    issue_id: int
+    value: str
+    message: str = ""
+
+
 def filter_gradebook(
     gradebook: Gradebook,
     *,
@@ -168,25 +195,7 @@ def filter_gradebook(
     last_name_from: str = "",
     last_name_to: str = "",
 ) -> Gradebook:
-    """Return a filtered copy of *gradebook*.
-
-    Parameters
-    ----------
-    group:
-        If non-empty, keep only groups whose name contains this substring
-        (case-insensitive).
-    teacher:
-        If non-empty, keep only groups whose teacher name matches exactly.
-    student:
-        If non-empty, keep only entries whose student name contains this
-        substring (case-insensitive).
-    min_score:
-        If set, keep only entries with total_score >= min_score.
-    last_name_from:
-        If non-empty, keep only entries whose last name >= this value
-    last_name_to:
-        If non-empty, keep only entries whose last name <= this value
-    """
+    """Return a filtered copy of gradebook by group, teacher, student, score, and name range."""
     filtered_groups: list[GradebookGroup] = []
     for g in gradebook.groups:
         if group and group.lower() not in g.group_name.lower():

@@ -11,7 +11,7 @@ import httpx
 from fastapi import FastAPI, HTTPException, Query, Request
 
 from anytask_scraper._queue_helpers import filter_queue_entries, parse_ajax_entry
-from anytask_scraper.client import LoginError
+from anytask_scraper.client import LoginError, WriteError
 from anytask_scraper.json_db import QueueJsonDB
 from anytask_scraper.parser import (
     extract_csrf_from_queue_page,
@@ -23,6 +23,7 @@ from anytask_scraper.parser import (
 )
 
 from .schemas import (
+    AddCommentRequest,
     AuthStatusResponse,
     CourseSchema,
     DBEntry,
@@ -40,21 +41,20 @@ from .schemas import (
     ProfileCourseEntrySchema,
     ReviewQueueSchema,
     SaveSessionRequest,
+    SetGradeRequest,
+    SetStatusRequest,
     SubmissionSchema,
+    WriteResultSchema,
 )
 from .state import AppState
 
 logger = logging.getLogger(__name__)
 
-VERSION = "0.9.0"
+VERSION = "0.10.0"
 
 
 def _validate_file_path(raw_path: str) -> Path:
-    """Validate a user-supplied file path against path traversal.
-
-    Rejects absolute paths and any ``..`` components. Returns the
-    resolved path relative to CWD.
-    """
+    """Validate a user-supplied file path against path traversal."""
     p = Path(raw_path)
     if p.is_absolute():
         raise HTTPException(status_code=400, detail="Absolute file paths are not allowed")
@@ -243,7 +243,7 @@ def _register_routes(app: FastAPI) -> None:
                             iid = extract_issue_id_from_breadcrumb(sub_html)
                             if iid == 0:
                                 continue
-                            sub = parse_submission_page(sub_html, iid)
+                            sub = parse_submission_page(sub_html, iid, issue_url=entry.issue_url)
                             queue.submissions[entry.issue_url] = sub
                         except Exception:
                             logger.debug(
@@ -288,7 +288,7 @@ def _register_routes(app: FastAPI) -> None:
             def _fetch(client: Any) -> dict[str, Any]:
                 url = f"https://anytask.org/issue/{issue_id}"
                 html = client.fetch_submission_page(url)
-                sub = parse_submission_page(html, issue_id)
+                sub = parse_submission_page(html, issue_id, issue_url=url)
                 return dataclasses.asdict(sub)
 
             return state.with_client(_fetch)
@@ -332,7 +332,7 @@ def _register_routes(app: FastAPI) -> None:
                             iid = extract_issue_id_from_breadcrumb(sub_html)
                             if iid == 0:
                                 continue
-                            sub = parse_submission_page(sub_html, iid)
+                            sub = parse_submission_page(sub_html, iid, issue_url=entry.issue_url)
                             queue.submissions[entry.issue_url] = sub
                         except Exception:
                             logger.debug(
@@ -451,6 +451,131 @@ def _register_routes(app: FastAPI) -> None:
                     ),
                 )
             return {"ok": True}
+        except HTTPException:
+            raise
+        except Exception as exc:
+            raise _handle_error(exc) from exc
+
+    @app.get("/db/diff", tags=["db"])
+    def route_db_diff(
+        request: Request,
+        db_file: str = Query("./queue_db.json"),
+        course_id: int | None = Query(None),
+    ) -> list[dict[str, Any]]:
+        try:
+            safe_db = _validate_file_path(db_file)
+            db = QueueJsonDB(safe_db)
+            return db.get_changed_entries(course_id=course_id)
+        except HTTPException:
+            raise
+        except Exception as exc:
+            raise _handle_error(exc) from exc
+
+    @app.get("/db/stats", tags=["db"])
+    def route_db_stats(
+        request: Request,
+        db_file: str = Query("./queue_db.json"),
+        course_id: int | None = Query(None),
+    ) -> dict[str, Any]:
+        try:
+            safe_db = _validate_file_path(db_file)
+            db = QueueJsonDB(safe_db)
+            return db.statistics(course_id=course_id)
+        except HTTPException:
+            raise
+        except Exception as exc:
+            raise _handle_error(exc) from exc
+
+    _status_name_map: dict[str, int] = {
+        "review": 3,
+        "rework": 4,
+        "accepted": 5,
+    }
+
+    @app.post(
+        "/submissions/{issue_id}/grade",
+        response_model=WriteResultSchema,
+        tags=["submissions"],
+    )
+    def route_set_grade(
+        issue_id: int,
+        req: SetGradeRequest,
+        request: Request,
+    ) -> dict[str, Any]:
+        state: AppState = request.app.state.anytask
+        try:
+
+            def _write(client: Any) -> dict[str, Any]:
+                result = client.set_grade(issue_id, req.grade, comment=req.comment)
+                return dataclasses.asdict(result)
+
+            return state.with_client(_write)
+        except WriteError as exc:
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
+        except HTTPException:
+            raise
+        except Exception as exc:
+            raise _handle_error(exc) from exc
+
+    @app.post(
+        "/submissions/{issue_id}/status",
+        response_model=WriteResultSchema,
+        tags=["submissions"],
+    )
+    def route_set_status(
+        issue_id: int,
+        req: SetStatusRequest,
+        request: Request,
+    ) -> dict[str, Any]:
+        state: AppState = request.app.state.anytask
+        try:
+            raw = req.status.strip().lower()
+            if raw in _status_name_map:
+                status_code = _status_name_map[raw]
+            else:
+                try:
+                    status_code = int(raw)
+                except ValueError:
+                    raise HTTPException(
+                        status_code=422,
+                        detail=(
+                            f"Invalid status {req.status!r}. "
+                            "Use 'review', 'rework', 'accepted', or integers 3/4/5."
+                        ),
+                    ) from None
+
+            def _write(client: Any) -> dict[str, Any]:
+                result = client.set_status(issue_id, status_code, comment=req.comment)
+                return dataclasses.asdict(result)
+
+            return state.with_client(_write)
+        except WriteError as exc:
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
+        except HTTPException:
+            raise
+        except Exception as exc:
+            raise _handle_error(exc) from exc
+
+    @app.post(
+        "/submissions/{issue_id}/comment",
+        response_model=WriteResultSchema,
+        tags=["submissions"],
+    )
+    def route_add_comment(
+        issue_id: int,
+        req: AddCommentRequest,
+        request: Request,
+    ) -> dict[str, Any]:
+        state: AppState = request.app.state.anytask
+        try:
+
+            def _write(client: Any) -> dict[str, Any]:
+                result = client.add_comment(issue_id, req.comment)
+                return dataclasses.asdict(result)
+
+            return state.with_client(_write)
+        except WriteError as exc:
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
         except HTTPException:
             raise
         except Exception as exc:

@@ -28,7 +28,6 @@ output/
 *.log
 *.har
 *.html
-tests/
 .anytask_session.json
 .anytask_scraper_settings.json
 *.session.json

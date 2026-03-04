@@ -10,25 +10,38 @@ from textual.widgets.option_list import Option
 
 
 class ActionMenuScreen(ModalScreen[str | None]):
-    """Modal context menu with copy/close actions."""
+    """Modal context menu."""
 
     BINDINGS = [
         Binding("escape", "close_menu", "Close", show=False),
     ]
 
-    def __init__(self, *, title: str = "Actions", copy_label: str = "Copy") -> None:
+    def __init__(
+        self,
+        *,
+        title: str = "Actions",
+        copy_label: str = "Copy",
+        teacher_mode: bool = False,
+    ) -> None:
         super().__init__()
         self._title = title
         self._copy_label = copy_label
+        self._teacher_mode = teacher_mode
 
     def compose(self) -> ComposeResult:
+        options: list[Option] = [Option(self._copy_label, id="copy")]
+        if self._teacher_mode:
+            options += [
+                Option("Accept & Rate", id="rate"),
+                Option("Set grade", id="grade"),
+                Option("Set status", id="status"),
+                Option("Add comment", id="comment"),
+            ]
+        options.append(Option("Close", id="close"))
+
         with Vertical(id="action-menu-box"):
             yield Label(self._title, id="action-menu-title")
-            yield OptionList(
-                Option(self._copy_label, id="copy"),
-                Option("Close", id="close"),
-                id="action-menu-options",
-            )
+            yield OptionList(*options, id="action-menu-options")
             yield Label("[dim]Enter[/dim] Select  [dim]Esc[/dim] Cancel", id="action-menu-hint")
 
     def on_mount(self) -> None:
@@ -41,7 +54,7 @@ class ActionMenuScreen(ModalScreen[str | None]):
     def _menu_option_selected(self, event: OptionList.OptionSelected) -> None:
         event.stop()
         option_id = event.option.id
-        if option_id == "copy":
-            self.dismiss("copy")
+        if option_id in {"copy", "rate", "grade", "status", "comment"}:
+            self.dismiss(option_id)
             return
         self.dismiss(None)

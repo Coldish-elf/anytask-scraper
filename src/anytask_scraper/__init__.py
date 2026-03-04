@@ -1,3 +1,5 @@
+from importlib.metadata import PackageNotFoundError, version
+
 from anytask_scraper._logging import setup_logging
 from anytask_scraper.client import AnytaskClient, DownloadResult, LoginError
 from anytask_scraper.display import (
@@ -51,6 +53,11 @@ from anytask_scraper.storage import (
     save_submissions_markdown,
 )
 
+try:
+    __version__ = version("anytask-scraper")
+except PackageNotFoundError:
+    __version__ = "0.0.0"
+
 __all__ = [
     "AnytaskClient",
     "Comment",
@@ -98,4 +105,5 @@ __all__ = [
     "save_submissions_markdown",
     "setup_logging",
     "strip_html",
+    "__version__",
 ]

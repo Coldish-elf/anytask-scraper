@@ -17,6 +17,7 @@ from anytask_scraper.models import (
     ProfileCourseEntry,
     QueueFilters,
     Submission,
+    SubmissionForms,
     Task,
 )
 
@@ -300,7 +301,7 @@ def extract_csrf_from_queue_page(html: str) -> str:
     return m.group(1) if m else ""
 
 
-def parse_submission_page(html: str, issue_id: int) -> Submission:
+def parse_submission_page(html: str, issue_id: int, issue_url: str = "") -> Submission:
     """Parse full submission page."""
     logger.debug("Parsing submission page for issue %d", issue_id)
     soup = BeautifulSoup(html, "lxml")
@@ -318,6 +319,7 @@ def parse_submission_page(html: str, issue_id: int) -> Submission:
         grade=meta.get("grade", ""),
         max_score=meta.get("max_score", ""),
         deadline=meta.get("deadline", ""),
+        issue_url=issue_url,
         comments=comments,
     )
 
@@ -414,7 +416,7 @@ def _parse_single_comment(li: Tag) -> Comment | None:
     history_body = row.find("div", class_="history-body")
     is_after_deadline = False
     if history_body:
-        classes: list[str] = history_body.get("class") or []  # type: ignore[assignment]
+        classes = list(history_body.get("class") or [])
         if isinstance(classes, list):
             is_after_deadline = "after_deadline" in classes
 
@@ -687,4 +689,63 @@ def _parse_gradebook_row(tr: Tag, task_titles: list[str]) -> GradebookEntry | No
         statuses=statuses,
         issue_urls=issue_urls,
         total_score=total_score,
+    )
+
+
+_CSRF_INPUT_RE = re.compile(
+    r"""<input\s+type=['"]hidden['"]\s+name=['"]csrfmiddlewaretoken['"]\s+value=['"]([^'"]+)['"]""",
+)
+
+
+def extract_csrf_from_submission_page(html: str) -> str:
+    """Extract CSRF token from a submission page's hidden input."""
+    m = _CSRF_INPUT_RE.search(html)
+    return m.group(1) if m else ""
+
+
+def extract_submission_forms(html: str) -> SubmissionForms:
+    """Extract write-form metadata from a submission page."""
+    soup = BeautifulSoup(html, "lxml")
+
+    csrf = extract_csrf_from_submission_page(html)
+
+    issue_input = soup.find("input", attrs={"name": "issue_id", "type": "hidden"})
+    issue_id = int(str(issue_input["value"])) if issue_input else 0
+
+    mark_form = soup.find("form", id="mark_form")
+    has_grade_form = mark_form is not None
+    max_score: float | None = None
+    if has_grade_form:
+        max_input = soup.find("input", id="max_mark")
+        if max_input:
+            max_score = _parse_float(str(max_input.get("value", "")))
+
+    status_form = soup.find("form", id="status_form")
+    has_status_form = status_form is not None
+    current_status = 0
+    status_options: list[tuple[int, str]] = []
+    if has_status_form and status_form is not None:
+        select = status_form.find("select", attrs={"name": "status"})
+        if select:
+            for opt in select.find_all("option"):
+                val = opt.get("value", "")
+                if val:
+                    code = int(str(val))
+                    label = opt.get_text(strip=True)
+                    status_options.append((code, label))
+                    if opt.get("selected") is not None:
+                        current_status = code
+
+    upload_form = soup.find("form", id="fileupload")
+    has_comment_form = upload_form is not None
+
+    return SubmissionForms(
+        csrf_token=csrf,
+        max_score=max_score,
+        current_status=current_status,
+        status_options=status_options,
+        issue_id=issue_id,
+        has_grade_form=has_grade_form,
+        has_status_form=has_status_form,
+        has_comment_form=has_comment_form,
     )

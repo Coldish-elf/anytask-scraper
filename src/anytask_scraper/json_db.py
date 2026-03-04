@@ -1,3 +1,5 @@
+"""JSON-backed queue database with strict hierarchy."""
+
 from __future__ import annotations
 
 import hashlib
@@ -372,6 +374,123 @@ class QueueJsonDB:
         if self.autosave:
             self.save()
         return True
+
+    def diff_assignment(
+        self,
+        *,
+        course_id: int,
+        student_key: str,
+        assignment_key: str,
+    ) -> list[dict[str, str]]:
+        """Return field-level diff between the last two queue_snapshot events."""
+        courses = self._data.get("courses", {})
+        if not isinstance(courses, dict):
+            return []
+
+        course = courses.get(str(course_id))
+        if not isinstance(course, dict):
+            return []
+        student = course.get("students", {}).get(student_key)
+        if not isinstance(student, dict):
+            return []
+        assignment = student.get("assignments", {}).get(assignment_key)
+        if not isinstance(assignment, dict):
+            return []
+
+        snapshots = [
+            e
+            for e in assignment.get("issue_chain", [])
+            if isinstance(e, dict) and e.get("event_type") == "queue_snapshot"
+        ]
+        if len(snapshots) < 2:
+            return []
+
+        prev, curr = snapshots[-2], snapshots[-1]
+        diffs: list[dict[str, str]] = []
+        for field in ("status", "reviewer", "grade", "updated"):
+            old_val = str(prev.get(field, ""))
+            new_val = str(curr.get(field, ""))
+            if old_val != new_val:
+                diffs.append({"field": field, "old": old_val, "new": new_val})
+        return diffs
+
+    def get_changed_entries(
+        self,
+        *,
+        course_id: int | None = None,
+    ) -> list[dict[str, Any]]:
+        """Return entries with field changes between the last two queue_snapshot events."""
+        changed: list[dict[str, Any]] = []
+        for cid, course in self._iter_courses(course_id):
+            students = course.get("students", {})
+            if not isinstance(students, dict):
+                continue
+            for student_key, student in sorted(students.items()):
+                if not isinstance(student, dict):
+                    continue
+                assignments = student.get("assignments", {})
+                if not isinstance(assignments, dict):
+                    continue
+                for assignment_key, assignment in sorted(assignments.items()):
+                    if not isinstance(assignment, dict):
+                        continue
+                    diffs = self.diff_assignment(
+                        course_id=cid,
+                        student_key=student_key,
+                        assignment_key=assignment_key,
+                    )
+                    if not diffs:
+                        continue
+                    queue = assignment.get("queue", {})
+                    changed.append(
+                        {
+                            "course_id": cid,
+                            "student_key": student_key,
+                            "assignment_key": assignment_key,
+                            "student_name": assignment.get("student_name", ""),
+                            "task_title": assignment.get("task_title", ""),
+                            "issue_id": assignment.get("issue_id", 0),
+                            "diffs": diffs,
+                            "current_status": queue.get("status", "")
+                            if isinstance(queue, dict)
+                            else "",
+                        }
+                    )
+        return changed
+
+    def statistics(
+        self,
+        *,
+        course_id: int | None = None,
+    ) -> dict[str, Any]:
+        """Return entry counts by queue_state (total/new/pulled/processed/by_course)."""
+        counts: dict[str, int] = {"total": 0, "new": 0, "pulled": 0, "processed": 0}
+        by_course: dict[int, dict[str, int]] = {}
+
+        for cid, course in self._iter_courses(course_id):
+            course_counts: dict[str, int] = {"total": 0, "new": 0, "pulled": 0, "processed": 0}
+            students = course.get("students", {})
+            if not isinstance(students, dict):
+                continue
+            for student in students.values():
+                if not isinstance(student, dict):
+                    continue
+                assignments = student.get("assignments", {})
+                if not isinstance(assignments, dict):
+                    continue
+                for assignment in assignments.values():
+                    if not isinstance(assignment, dict):
+                        continue
+                    state = assignment.get("queue_state", "new")
+                    counts["total"] += 1
+                    course_counts["total"] += 1
+                    if state in counts:
+                        counts[state] += 1
+                    if state in course_counts:
+                        course_counts[state] += 1
+            by_course[cid] = course_counts
+
+        return {**counts, "by_course": by_course}
 
     def _ensure_course(self, course_id: int, title: str, now: str) -> dict[str, Any]:
         courses = self._data.setdefault("courses", {})

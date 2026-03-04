@@ -228,6 +228,28 @@ anytask-scraper db write -c COURSE_ID --issue-id ISSUE_ID --action ACTION --valu
 | `--author` | Кто выполнил действие. |
 | `--note` | Дополнительная заметка. |
 
+## Команда `serve`
+
+Запускает HTTP API сервер (FastAPI + uvicorn).
+
+```bash
+anytask-scraper serve [OPTIONS]
+```
+
+Опции:
+
+| Опция | Назначение |
+| --- | --- |
+| `--host` | Хост для bind (по умолчанию `127.0.0.1`). |
+| `--port` | Порт для bind (по умолчанию `8000`). |
+| `--session-file` | Опциональный файл сессии для загрузки при старте. |
+| `--reload` | Включить авто-перезапуск в режиме разработки. |
+
+Примечания:
+
+- Нужны API-зависимости: `pip install "anytask-scraper[api]"`.
+- С `--reload` uvicorn запускается в factory-режиме через import string.
+
 ## Команда `settings`
 
 Управляет локальным файлом настроек.

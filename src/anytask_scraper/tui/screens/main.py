@@ -9,7 +9,7 @@ import unicodedata
 from contextlib import suppress
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
 import httpx
@@ -91,6 +91,9 @@ from anytask_scraper.tui.widgets.filter_bar import (
     TaskFilterBar,
 )
 from anytask_scraper.tui.widgets.param_selector import ParameterSelector
+
+if TYPE_CHECKING:
+    from anytask_scraper.tui.app import AnytaskApp
 
 logger = logging.getLogger(__name__)
 
@@ -227,6 +230,8 @@ def _extract_filter_text(
 class MainScreen(Screen[None]):
     """Main screen: left course pane + right TabbedContent (Tasks|Queue|Export)."""
 
+    app: AnytaskApp
+
     BINDINGS = [
         Binding("tab", "cycle_focus", "Next", show=False),
         Binding("shift+tab", "cycle_focus_back", "Prev", show=False),
@@ -267,6 +272,7 @@ class MainScreen(Screen[None]):
         self._queue_filter_undo: dict[str, Any] | None = None
         self._queue_sort_column: int | None = None
         self._queue_sort_reverse = False
+        self._queue_preview_submission: Submission | None = None
         self._gradebook_loaded_for: int | None = None
         self.all_gradebook_groups: list[GradebookGroup] = []
         self.filtered_gradebook_groups: list[GradebookGroup] = []
@@ -342,6 +348,15 @@ class MainScreen(Screen[None]):
                                 Label("[dim]Select a queue entry[/dim]"),
                                 id="queue-detail-scroll",
                             )
+                            with Horizontal(id="queue-action-bar", classes="hidden"):
+                                yield Button(
+                                    "Accept & Rate",
+                                    id="queue-btn-rate",
+                                    variant="success",
+                                )
+                                yield Button("Grade", id="queue-btn-grade")
+                                yield Button("Status", id="queue-btn-status")
+                                yield Button("Comment", id="queue-btn-comment")
 
                 with TabPane("Gradebook", id="gradebook-tab"):
                     yield GradebookFilterBar(classes="filter-bar", id="gb-filter-bar")
@@ -476,9 +491,9 @@ class MainScreen(Screen[None]):
 
         self.query_one("#course-list", OptionList).focus()
 
-        saved_ids = self.app.load_course_ids()  # type: ignore[attr-defined]
+        saved_ids = self.app.load_course_ids()
         for cid in saved_ids:
-            if cid not in self.app.courses:  # type: ignore[attr-defined]
+            if cid not in self.app.courses:
                 self._fetch_course(cid)
         self._update_key_bar()
 
@@ -930,7 +945,7 @@ class MainScreen(Screen[None]):
     def _copy_course_payload(self) -> tuple[str, str] | None:
         if self._selected_course_id is None:
             return None
-        course = self.app.courses.get(self._selected_course_id)  # type: ignore[attr-defined]
+        course = self.app.courses.get(self._selected_course_id)
         title = course.title if course is not None else f"Course {self._selected_course_id}"
         text = format_course_for_clipboard(self._selected_course_id, title)
         return ("course", text)
@@ -1054,7 +1069,7 @@ class MainScreen(Screen[None]):
             self._show_status("Enter a valid course ID", kind="error")
             return
 
-        if course_id in self.app.courses:  # type: ignore[attr-defined]
+        if course_id in self.app.courses:
             self._show_status(f"Course {course_id} already loaded", kind="warning")
             return
 
@@ -1071,7 +1086,7 @@ class MainScreen(Screen[None]):
     @work(thread=True)
     def _do_discover_courses(self) -> None:
         try:
-            client = self.app.client  # type: ignore[attr-defined]
+            client = self.app.client
             if not client:
                 self.app.call_from_thread(self._show_status, "No client", kind="error")
                 return
@@ -1092,7 +1107,7 @@ class MainScreen(Screen[None]):
 
             added = 0
             for entry in entries:
-                if entry.course_id not in self.app.courses:  # type: ignore[attr-defined]
+                if entry.course_id not in self.app.courses:
                     self.app.call_from_thread(self._fetch_course, entry.course_id)
                     added += 1
 
@@ -1121,11 +1136,11 @@ class MainScreen(Screen[None]):
             self._show_status("No course selected", kind="warning")
             return
         cid = self._selected_course_id
-        self.app.remove_course_id(cid)  # type: ignore[attr-defined]
+        self.app.remove_course_id(cid)
 
         option_list = self.query_one("#course-list", OptionList)
         option_list.clear_options()
-        for course in self.app.courses.values():  # type: ignore[attr-defined]
+        for course in self.app.courses.values():
             title = course.title or f"Course {course.course_id}"
             option_list.add_option(Option(title, id=str(course.course_id)))
 
@@ -1156,14 +1171,14 @@ class MainScreen(Screen[None]):
 
     def action_logout(self) -> None:
         """Return to login screen."""
-        if self.app.client is not None:  # type: ignore[attr-defined]
-            self.app.client.close()  # type: ignore[attr-defined]
-        self.app.client = None  # type: ignore[attr-defined]
-        self.app.session_path = ""  # type: ignore[attr-defined]
-        self.app.current_course = None  # type: ignore[attr-defined]
-        self.app.courses = {}  # type: ignore[attr-defined]
-        self.app.queue_cache = {}  # type: ignore[attr-defined]
-        self.app.gradebook_cache = {}  # type: ignore[attr-defined]
+        if self.app.client is not None:
+            self.app.client.close()
+        self.app.client = None
+        self.app.session_path = ""
+        self.app.current_course = None
+        self.app.courses = {}
+        self.app.queue_cache = {}
+        self.app.gradebook_cache = {}
         from anytask_scraper.tui.screens.login import LoginScreen
 
         self.app.switch_screen(LoginScreen())
@@ -1174,12 +1189,12 @@ class MainScreen(Screen[None]):
         if option_id is None:
             return
         course_id = int(option_id)
-        course = self.app.courses.get(course_id)  # type: ignore[attr-defined]
+        course = self.app.courses.get(course_id)
         if course is None:
             return
 
         self._selected_course_id = course_id
-        self.app.current_course = course  # type: ignore[attr-defined]
+        self.app.current_course = course
         self.all_tasks = list(course.tasks)
         self.is_teacher_view = any(t.section for t in self.all_tasks)
 
@@ -1336,6 +1351,8 @@ class MainScreen(Screen[None]):
 
     def _show_queue_preview_info(self, entry: QueueEntry) -> None:
         """Show basic queue entry info when no issue access."""
+        self._queue_preview_submission = None
+        self._update_queue_action_bar()
         scroll = self.query_one("#queue-detail-scroll", VerticalScroll)
         scroll.remove_children()
         scroll.mount(
@@ -1360,15 +1377,13 @@ class MainScreen(Screen[None]):
         """Auto-load submission preview for queue detail pane."""
         try:
             if self._selected_course_id is not None:
-                cache = self.app.queue_cache.get(  # type: ignore[attr-defined]
-                    self._selected_course_id
-                )
+                cache = self.app.queue_cache.get(self._selected_course_id)
                 if cache and entry.issue_url in cache.submissions:
                     sub = cache.submissions[entry.issue_url]
                     self.app.call_from_thread(self._render_queue_preview, sub)
                     return
 
-            client = self.app.client  # type: ignore[attr-defined]
+            client = self.app.client
             if not client:
                 return
 
@@ -1380,12 +1395,10 @@ class MainScreen(Screen[None]):
                 self.app.call_from_thread(self._show_queue_preview_info, entry)
                 return
 
-            sub = parse_submission_page(html, issue_id)
+            sub = parse_submission_page(html, issue_id, issue_url=entry.issue_url)
 
             if self._selected_course_id is not None:
-                cache = self.app.queue_cache.get(  # type: ignore[attr-defined]
-                    self._selected_course_id
-                )
+                cache = self.app.queue_cache.get(self._selected_course_id)
                 if cache:
                     cache.submissions[entry.issue_url] = sub
 
@@ -1408,6 +1421,8 @@ class MainScreen(Screen[None]):
 
     def _render_queue_preview(self, sub: Submission) -> None:
         """Render submission preview in the queue detail pane."""
+        self._queue_preview_submission = sub
+        self._update_queue_action_bar()
         scroll = self.query_one("#queue-detail-scroll", VerticalScroll)
         scroll.remove_children()
 
@@ -1461,15 +1476,192 @@ class MainScreen(Screen[None]):
 
         scroll.mount(
             Label(
-                "\n[dim]Press Enter for full view[/dim]",
+                "\n[dim]Enter - full view[/dim]",
                 classes="detail-text",
             )
         )
 
+    def _update_queue_action_bar(self) -> None:
+        """Show or hide the queue action button bar."""
+        bar = self.query_one("#queue-action-bar", Horizontal)
+        if self.is_teacher_view and self._queue_preview_submission is not None:
+            bar.remove_class("hidden")
+        else:
+            bar.add_class("hidden")
+
     def _clear_queue_detail(self) -> None:
+        self._queue_preview_submission = None
+        self._update_queue_action_bar()
         scroll = self.query_one("#queue-detail-scroll", VerticalScroll)
         scroll.remove_children()
         scroll.mount(Label("[dim]Select a queue entry[/dim]"))
+
+    @on(Button.Pressed, "#queue-btn-rate")
+    def _queue_rate_pressed(self, event: Button.Pressed) -> None:
+        event.stop()
+        sub = self._queue_preview_submission
+        if sub is None:
+            return
+        from anytask_scraper.tui.screens.submission import AcceptAndRateScreen
+
+        max_score_value: float | None = None
+        if sub.max_score:
+            with suppress(ValueError):
+                max_score_value = float(sub.max_score)
+        issue_url = sub.issue_url
+        self.app.push_screen(
+            AcceptAndRateScreen(max_score=max_score_value),
+            lambda result: self._queue_write_accept_and_rate(sub.issue_id, result, issue_url),
+        )
+
+    @on(Button.Pressed, "#queue-btn-grade")
+    def _queue_grade_pressed(self, event: Button.Pressed) -> None:
+        event.stop()
+        sub = self._queue_preview_submission
+        if sub is None:
+            return
+        from anytask_scraper.tui.screens.submission import GradeInputScreen
+
+        max_score_value: float | None = None
+        if sub.max_score:
+            with suppress(ValueError):
+                max_score_value = float(sub.max_score)
+        issue_url = sub.issue_url
+        self.app.push_screen(
+            GradeInputScreen(max_score=max_score_value),
+            lambda value: self._queue_write_grade(sub.issue_id, value, issue_url),
+        )
+
+    @on(Button.Pressed, "#queue-btn-status")
+    def _queue_status_pressed(self, event: Button.Pressed) -> None:
+        event.stop()
+        sub = self._queue_preview_submission
+        if sub is None:
+            return
+        from anytask_scraper.tui.screens.submission import StatusSelectScreen
+
+        issue_url = sub.issue_url
+        self.app.push_screen(
+            StatusSelectScreen(),
+            lambda code: self._queue_write_status(sub.issue_id, code, issue_url),
+        )
+
+    @on(Button.Pressed, "#queue-btn-comment")
+    def _queue_comment_pressed(self, event: Button.Pressed) -> None:
+        event.stop()
+        sub = self._queue_preview_submission
+        if sub is None:
+            return
+        from anytask_scraper.tui.screens.submission import CommentInputScreen
+
+        issue_url = sub.issue_url
+        self.app.push_screen(
+            CommentInputScreen(),
+            lambda text: self._queue_write_comment(sub.issue_id, text, issue_url),
+        )
+
+    def _queue_write_accept_and_rate(
+        self, issue_id: int, result: tuple[float, str] | None, issue_url: str = ""
+    ) -> None:
+        if result is not None:
+            grade, comment = result
+            self._do_queue_accept_and_rate(issue_id, grade, comment, issue_url)
+
+    def _queue_write_grade(self, issue_id: int, value: float | None, issue_url: str = "") -> None:
+        if value is not None:
+            self._do_queue_write("grade", issue_id, grade=value, issue_url=issue_url)
+
+    def _queue_write_status(self, issue_id: int, code: int | None, issue_url: str = "") -> None:
+        if code is not None:
+            self._do_queue_write("status", issue_id, status=code, issue_url=issue_url)
+
+    def _queue_write_comment(self, issue_id: int, text: str | None, issue_url: str = "") -> None:
+        if text is not None:
+            self._do_queue_write("comment", issue_id, comment=text, issue_url=issue_url)
+
+    @work(thread=True)
+    def _do_queue_write(
+        self,
+        action: str,
+        issue_id: int,
+        *,
+        grade: float | None = None,
+        status: int | None = None,
+        comment: str | None = None,
+        issue_url: str = "",
+    ) -> None:
+        client = self.app.client
+        if not client:
+            return
+        try:
+            if action == "grade" and grade is not None:
+                result = client.set_grade(issue_id, grade, issue_url=issue_url)
+            elif action == "status" and status is not None:
+                result = client.set_status(issue_id, status, issue_url=issue_url)
+            elif action == "comment" and comment is not None:
+                result = client.add_comment(issue_id, comment, issue_url=issue_url)
+            else:
+                return
+
+            if result.success:
+                self.app.call_from_thread(self._show_status, result.message, kind="success")
+                self._invalidate_queue_submission_cache(issue_id)
+            else:
+                self.app.call_from_thread(self._show_status, result.message, kind="error")
+        except Exception as e:
+            self.app.call_from_thread(self._show_status, f"Write failed: {e}", kind="error")
+
+    @work(thread=True)
+    def _do_queue_accept_and_rate(
+        self, issue_id: int, grade: float, comment: str, issue_url: str = ""
+    ) -> None:
+        client = self.app.client
+        if not client:
+            return
+        errors: list[str] = []
+        try:
+            result = client.set_grade(issue_id, grade, issue_url=issue_url)
+            if not result.success:
+                errors.append(f"Grade: {result.message}")
+
+            result = client.set_status(issue_id, 5, issue_url=issue_url)
+            if not result.success:
+                errors.append(f"Status: {result.message}")
+
+            if comment:
+                result = client.add_comment(issue_id, comment, issue_url=issue_url)
+                if not result.success:
+                    errors.append(f"Comment: {result.message}")
+
+            self._invalidate_queue_submission_cache(issue_id)
+
+            if errors:
+                msg = "; ".join(errors)
+                self.app.call_from_thread(self._show_status, msg, kind="error")
+            else:
+                self.app.call_from_thread(
+                    self._show_status,
+                    f"Accepted with grade {grade}",
+                    kind="success",
+                )
+        except Exception as e:
+            self.app.call_from_thread(self._show_status, f"Rate failed: {e}", kind="error")
+
+    def _invalidate_queue_submission_cache(self, issue_id: int) -> None:
+        """Remove cached submission so next preview fetches fresh data."""
+        if self._selected_course_id is None:
+            return
+        cache = self.app.queue_cache.get(self._selected_course_id)
+        if not cache:
+            return
+        url_to_remove = None
+        for url, sub in cache.submissions.items():
+            if sub.issue_id == issue_id:
+                url_to_remove = url
+                break
+        if url_to_remove:
+            del cache.submissions[url_to_remove]
+            self._queue_preview_submission = None
 
     @on(DataTable.HeaderSelected, "#queue-table")
     def _queue_header_selected(self, event: DataTable.HeaderSelected) -> None:
@@ -2057,7 +2249,7 @@ class MainScreen(Screen[None]):
         elif export_type == "queue-export-radio":
             q_entries = list(self.all_queue_entries)
             if not q_entries:
-                cache = self.app.queue_cache  # type: ignore[attr-defined]
+                cache = self.app.queue_cache
                 q_entries = list(cache.get(course_id, ReviewQueue(course_id=course_id)).entries)
             if task_filters:
                 q_entries = [e for e in q_entries if e.task_title in task_filters]
@@ -2084,8 +2276,8 @@ class MainScreen(Screen[None]):
         elif export_type == "gb-export-radio":
             groups = list(self.all_gradebook_groups)
             if not groups:
-                cache = self.app.gradebook_cache  # type: ignore[attr-defined]
-                cached = cache.get(course_id)
+                gb_cache = self.app.gradebook_cache
+                cached = gb_cache.get(course_id)
                 if cached is not None:
                     groups = list(cached.groups)
             if group_filters:
@@ -2124,7 +2316,7 @@ class MainScreen(Screen[None]):
                 return "[dim]Files Only mode:\nDownloads submission files\nto student folders[/dim]"
             sub_entries = list(self.all_queue_entries)
             if not sub_entries:
-                cache = self.app.queue_cache  # type: ignore[attr-defined]
+                cache = self.app.queue_cache
                 sub_entries = list(cache.get(course_id, ReviewQueue(course_id=course_id)).entries)
             if task_filters:
                 sub_entries = [e for e in sub_entries if e.task_title in task_filters]
@@ -2149,7 +2341,7 @@ class MainScreen(Screen[None]):
             )
         elif export_type == "db-export-radio":
             queue_entries = list(self.all_queue_entries)
-            queue_payload = self.app.queue_cache.get(  # type: ignore[attr-defined]
+            queue_payload = self.app.queue_cache.get(
                 course_id,
                 ReviewQueue(course_id=course_id),
             )
@@ -2186,7 +2378,7 @@ class MainScreen(Screen[None]):
                 entries=list(queue_entries[:max_items]),
                 submissions=preview_submissions,
             )
-            course = self.app.courses.get(course_id)  # type: ignore[attr-defined]
+            course = self.app.courses.get(course_id)
             preview_db = QueueJsonDB(
                 Path(tempfile.gettempdir()) / f"anytask_preview_{course_id}_{uuid4().hex}.json",
                 autosave=False,
@@ -2685,7 +2877,7 @@ class MainScreen(Screen[None]):
             last_name_to = _extract_filter_text(filters, "last_name_to")
 
             if export_type == "tasks-export-radio":
-                course = self.app.current_course  # type: ignore[attr-defined]
+                course = self.app.current_course
                 if not course:
                     self.app.call_from_thread(
                         self._set_export_status, "No course selected", "error"
@@ -2808,7 +3000,7 @@ class MainScreen(Screen[None]):
                     )
                     return
 
-                client = self.app.client  # type: ignore[attr-defined]
+                client = self.app.client
                 if not client:
                     self.app.call_from_thread(
                         self._set_export_status,
@@ -2830,7 +3022,7 @@ class MainScreen(Screen[None]):
                         issue_id = extract_issue_id_from_breadcrumb(sub_html)
                         if issue_id == 0:
                             continue
-                        sub = parse_submission_page(sub_html, issue_id)
+                        sub = parse_submission_page(sub_html, issue_id, issue_url=entry.issue_url)
                         subs.append(sub)
                     except Exception:
                         logger.debug("Failed to fetch submission", exc_info=True)
@@ -2938,7 +3130,7 @@ class MainScreen(Screen[None]):
                 resolved_name = self._resolve_export_filename(default_name)
                 db_path = output_path / resolved_name
                 db = QueueJsonDB(db_path)
-                course = self.app.courses.get(course_id)  # type: ignore[attr-defined]
+                course = self.app.courses.get(course_id)
                 course_title = course.title if course else ""
                 newly_flagged = db.sync_queue(filtered_queue, course_title=course_title)
                 saved = db_path
@@ -3018,8 +3210,8 @@ class MainScreen(Screen[None]):
 
     def _load_queue_for_export(self, course_id: int) -> ReviewQueue:
         """Load queue data for export without requiring Queue tab activation."""
-        cache = self.app.queue_cache  # type: ignore[attr-defined]
-        cached = cast(ReviewQueue | None, cache.get(course_id))
+        cache = self.app.queue_cache
+        cached = cache.get(course_id)
         if cached is not None:
             self.all_queue_entries = list(cached.entries)
             self.filtered_queue_entries = list(cached.entries)
@@ -3027,7 +3219,7 @@ class MainScreen(Screen[None]):
             self.app.call_from_thread(self._update_queue_info, f"{len(cached.entries)} entries")
             return cached
 
-        client = self.app.client  # type: ignore[attr-defined]
+        client = self.app.client
         if not client:
             raise RuntimeError("Not logged in")
 
@@ -3064,8 +3256,8 @@ class MainScreen(Screen[None]):
 
     def _load_gradebook_for_export(self, course_id: int) -> Gradebook:
         """Load gradebook data for export without requiring Gradebook tab activation."""
-        cache = self.app.gradebook_cache  # type: ignore[attr-defined]
-        cached = cast(Gradebook | None, cache.get(course_id))
+        cache = self.app.gradebook_cache
+        cached = cache.get(course_id)
         if cached is not None:
             self.all_gradebook_groups = list(cached.groups)
             self.filtered_gradebook_groups = list(cached.groups)
@@ -3077,7 +3269,7 @@ class MainScreen(Screen[None]):
             )
             return cached
 
-        client = self.app.client  # type: ignore[attr-defined]
+        client = self.app.client
         if not client:
             raise RuntimeError("Not logged in")
 
@@ -3099,7 +3291,7 @@ class MainScreen(Screen[None]):
     @work(thread=True)
     def _fetch_course(self, course_id: int) -> None:
         try:
-            client = self.app.client  # type: ignore[attr-defined]
+            client = self.app.client
             if not client:
                 self.app.call_from_thread(self._show_status, "No client", kind="error")
                 return
@@ -3107,10 +3299,8 @@ class MainScreen(Screen[None]):
             html = client.fetch_course_page(course_id)
             course = parse_course_page(html, course_id)
 
-            self.app.courses[course_id] = course  # type: ignore[attr-defined]
-            self.app.call_from_thread(
-                self.app.save_course_ids  # type: ignore[attr-defined]
-            )
+            self.app.courses[course_id] = course
+            self.app.call_from_thread(self.app.save_course_ids)
             self.app.call_from_thread(self._add_course_option, course)
             self.app.call_from_thread(
                 self._show_status,
@@ -3127,7 +3317,7 @@ class MainScreen(Screen[None]):
                 msg = f"Course {course_id}: HTTP {code}"
             self.app.call_from_thread(self._show_status, msg, kind="error")
             self.app.call_from_thread(
-                self.app.remove_course_id,  # type: ignore[attr-defined]
+                self.app.remove_course_id,
                 course_id,
             )
         except Exception as e:
@@ -3137,7 +3327,7 @@ class MainScreen(Screen[None]):
                 kind="error",
             )
             self.app.call_from_thread(
-                self.app.remove_course_id,  # type: ignore[attr-defined]
+                self.app.remove_course_id,
                 course_id,
             )
 
@@ -3158,7 +3348,7 @@ class MainScreen(Screen[None]):
         if self._queue_loaded_for == self._selected_course_id:
             return
 
-        cache = self.app.queue_cache  # type: ignore[attr-defined]
+        cache = self.app.queue_cache
         if self._selected_course_id in cache:
             queue = cache[self._selected_course_id]
             self.all_queue_entries = list(queue.entries)
@@ -3175,7 +3365,7 @@ class MainScreen(Screen[None]):
     @work(thread=True)
     def _fetch_queue(self, course_id: int) -> None:
         try:
-            client = self.app.client  # type: ignore[attr-defined]
+            client = self.app.client
             if not client:
                 self.app.call_from_thread(self._show_status, "No client", kind="error")
                 return
@@ -3202,7 +3392,7 @@ class MainScreen(Screen[None]):
             ]
 
             queue = ReviewQueue(course_id=course_id, entries=entries)
-            self.app.queue_cache[course_id] = queue  # type: ignore[attr-defined]
+            self.app.queue_cache[course_id] = queue
 
             self.all_queue_entries = entries
             self.filtered_queue_entries = list(entries)
@@ -3269,7 +3459,7 @@ class MainScreen(Screen[None]):
             return
 
         try:
-            client = self.app.client  # type: ignore[attr-defined]
+            client = self.app.client
             if not client:
                 return
 
@@ -3283,7 +3473,7 @@ class MainScreen(Screen[None]):
                 )
                 return
 
-            sub = parse_submission_page(html, issue_id)
+            sub = parse_submission_page(html, issue_id, issue_url=submit_url)
             self._task_submission_cache[cache_key] = sub
             self.app.call_from_thread(self._push_submission_screen, sub)
         except Exception as e:
@@ -3297,15 +3487,13 @@ class MainScreen(Screen[None]):
     def _fetch_and_show_submission(self, entry: QueueEntry) -> None:
         try:
             if self._selected_course_id is not None:
-                cache = self.app.queue_cache.get(  # type: ignore[attr-defined]
-                    self._selected_course_id
-                )
+                cache = self.app.queue_cache.get(self._selected_course_id)
                 if cache and entry.issue_url in cache.submissions:
                     sub = cache.submissions[entry.issue_url]
                     self.app.call_from_thread(self._push_submission_screen, sub)
                     return
 
-            client = self.app.client  # type: ignore[attr-defined]
+            client = self.app.client
             if not client:
                 return
 
@@ -3319,12 +3507,10 @@ class MainScreen(Screen[None]):
                 )
                 return
 
-            sub = parse_submission_page(html, issue_id)
+            sub = parse_submission_page(html, issue_id, issue_url=entry.issue_url)
 
             if self._selected_course_id is not None:
-                cache = self.app.queue_cache.get(  # type: ignore[attr-defined]
-                    self._selected_course_id
-                )
+                cache = self.app.queue_cache.get(self._selected_course_id)
                 if cache:
                     cache.submissions[entry.issue_url] = sub
 
@@ -3341,7 +3527,7 @@ class MainScreen(Screen[None]):
             SubmissionScreen,
         )
 
-        self.app.push_screen(SubmissionScreen(sub))
+        self.app.push_screen(SubmissionScreen(sub, teacher_mode=self.is_teacher_view))
 
     def _setup_task_table_columns(self) -> None:
         table = self.query_one("#task-table", DataTable)
@@ -3478,7 +3664,7 @@ class MainScreen(Screen[None]):
         if self._gradebook_loaded_for == self._selected_course_id:
             return
 
-        cache = self.app.gradebook_cache  # type: ignore[attr-defined]
+        cache = self.app.gradebook_cache
         if self._selected_course_id in cache:
             gradebook = cache[self._selected_course_id]
             self._gradebook_loaded_for = self._selected_course_id
@@ -3498,7 +3684,7 @@ class MainScreen(Screen[None]):
     @work(thread=True)
     def _fetch_gradebook(self, course_id: int) -> None:
         try:
-            client = self.app.client  # type: ignore[attr-defined]
+            client = self.app.client
             if not client:
                 self.app.call_from_thread(self._show_status, "No client", kind="error")
                 return
@@ -3506,7 +3692,7 @@ class MainScreen(Screen[None]):
             html = client.fetch_gradebook_page(course_id)
             gradebook = parse_gradebook_page(html, course_id)
 
-            self.app.gradebook_cache[course_id] = gradebook  # type: ignore[attr-defined]
+            self.app.gradebook_cache[course_id] = gradebook
             self._gradebook_loaded_for = course_id
             self.all_gradebook_groups = list(gradebook.groups)
             self.filtered_gradebook_groups = list(gradebook.groups)

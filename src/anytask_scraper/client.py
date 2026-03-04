@@ -11,6 +11,8 @@ from typing import Any
 
 import httpx
 
+from anytask_scraper.models import SubmissionForms, WriteResult
+
 logger = logging.getLogger(__name__)
 
 BASE_URL = "https://anytask.org"
@@ -31,6 +33,10 @@ class DownloadResult:
 
 class LoginError(Exception):
     """Auth failed."""
+
+
+class WriteError(Exception):
+    """Write operation failed at the protocol level (e.g. missing CSRF)."""
 
 
 class AnytaskClient:
@@ -96,7 +102,9 @@ class AnytaskClient:
             logger.info("Session expired, re-authenticating")
             self._authenticated = False
             if not self._has_credentials():
-                raise LoginError("Saved session expired and no credentials were provided")
+                raise LoginError(
+                    "Saved session expired and no credentials were provided"
+                )
             self.login()
             resp = self._client.request(method, url, **kwargs)
 
@@ -163,9 +171,15 @@ class AnytaskClient:
         import os
         import stat
 
-        fd = os.open(str(path), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, stat.S_IRUSR | stat.S_IWUSR)
+        fd = os.open(
+            str(path),
+            os.O_WRONLY | os.O_CREAT | os.O_TRUNC,
+            stat.S_IRUSR | stat.S_IWUSR,
+        )
         try:
-            os.write(fd, json.dumps(payload, indent=2, ensure_ascii=False).encode("utf-8"))
+            os.write(
+                fd, json.dumps(payload, indent=2, ensure_ascii=False).encode("utf-8")
+            )
         finally:
             os.close(fd)
 
@@ -227,7 +241,8 @@ class AnytaskClient:
             data=data,
             headers={"Referer": f"{BASE_URL}/course/{course_id}/queue"},
         )
-        return resp.json()  # type: ignore[no-any-return]
+        result: dict[str, object] = resp.json()
+        return result
 
     def fetch_all_queue_entries(
         self,
@@ -253,7 +268,9 @@ class AnytaskClient:
                 break
             all_entries.extend(data)
             total = int(str(result.get("recordsTotal", 0)))
-            logger.debug("Queue pagination: fetched %d/%d entries", len(all_entries), total)
+            logger.debug(
+                "Queue pagination: fetched %d/%d entries", len(all_entries), total
+            )
             start += page_size
             if start >= total or len(data) < page_size:
                 break
@@ -264,6 +281,248 @@ class AnytaskClient:
         url = issue_url if issue_url.startswith("http") else f"{BASE_URL}{issue_url}"
         resp = self._request("GET", url)
         return resp.text
+
+    def _fetch_submission_forms(
+        self, issue_id: int, issue_url: str = ""
+    ) -> SubmissionForms:
+        """GET submission page and extract form metadata + CSRF."""
+        from anytask_scraper.parser import extract_submission_forms
+
+        raw_url = issue_url or f"/issue/{issue_id}/"
+        url = raw_url if raw_url.startswith("http") else f"{BASE_URL}{raw_url}"
+        resp = self._request("GET", url)
+        forms = extract_submission_forms(resp.text)
+        forms.page_url = str(resp.url)
+        if not forms.csrf_token:
+            raise WriteError(f"Could not extract CSRF token from issue {issue_id}")
+        return forms
+
+    def set_grade(
+        self,
+        issue_id: int,
+        grade: float,
+        comment: str = "",
+        *,
+        issue_url: str = "",
+    ) -> WriteResult:
+        """Set grade on a submission."""
+        logger.info("Setting grade %s on issue %d", grade, issue_id)
+        try:
+            forms = self._fetch_submission_forms(issue_id, issue_url)
+        except (httpx.HTTPStatusError, WriteError) as e:
+            return WriteResult(
+                success=False,
+                action="grade",
+                issue_id=issue_id,
+                value=str(grade),
+                message=f"Failed to fetch submission page: {e}",
+            )
+
+        if not forms.has_grade_form:
+            return WriteResult(
+                success=False,
+                action="grade",
+                issue_id=issue_id,
+                value=str(grade),
+                message="Grade form not available on this submission",
+            )
+
+        if grade < 0:
+            return WriteResult(
+                success=False,
+                action="grade",
+                issue_id=issue_id,
+                value=str(grade),
+                message="Grade must be >= 0",
+            )
+        if forms.max_score is not None and grade > forms.max_score:
+            return WriteResult(
+                success=False,
+                action="grade",
+                issue_id=issue_id,
+                value=str(grade),
+                message=f"Grade {grade} exceeds max score {forms.max_score}",
+            )
+
+        data: dict[str, str] = {
+            "csrfmiddlewaretoken": forms.csrf_token,
+            "form_name": "mark_form",
+            "mark": str(grade),
+        }
+        if comment:
+            data["comment_verdict"] = comment
+
+        post_url = forms.page_url or f"{BASE_URL}/issue/{issue_id}/"
+        try:
+            self._request(
+                "POST",
+                post_url,
+                data=data,
+                files={"": ("", b"")},
+                headers={"Referer": post_url},
+            )
+        except httpx.HTTPStatusError as e:
+            return WriteResult(
+                success=False,
+                action="grade",
+                issue_id=issue_id,
+                value=str(grade),
+                message=f"POST failed: {e}",
+            )
+        return WriteResult(
+            success=True,
+            action="grade",
+            issue_id=issue_id,
+            value=str(grade),
+            message=f"Grade set to {grade}",
+        )
+
+    def set_status(
+        self,
+        issue_id: int,
+        status: int,
+        comment: str = "",
+        *,
+        issue_url: str = "",
+    ) -> WriteResult:
+        """Set status on a submission (3=Under Review, 4=Needs Rework, 5=Accepted)."""
+        logger.info("Setting status %d on issue %d", status, issue_id)
+        try:
+            forms = self._fetch_submission_forms(issue_id, issue_url)
+        except (httpx.HTTPStatusError, WriteError) as e:
+            return WriteResult(
+                success=False,
+                action="status",
+                issue_id=issue_id,
+                value=str(status),
+                message=f"Failed to fetch submission page: {e}",
+            )
+
+        if not forms.has_status_form:
+            return WriteResult(
+                success=False,
+                action="status",
+                issue_id=issue_id,
+                value=str(status),
+                message="Status form not available on this submission",
+            )
+
+        valid_codes = {code for code, _ in forms.status_options}
+        if status not in valid_codes:
+            labels = ", ".join(f"{c}={name}" for c, name in forms.status_options)
+            return WriteResult(
+                success=False,
+                action="status",
+                issue_id=issue_id,
+                value=str(status),
+                message=f"Invalid status {status}. Valid: {labels}",
+            )
+
+        data: dict[str, str] = {
+            "csrfmiddlewaretoken": forms.csrf_token,
+            "form_name": "status_form",
+            "status": str(status),
+        }
+        if comment:
+            data["comment_verdict"] = comment
+
+        post_url = forms.page_url or f"{BASE_URL}/issue/{issue_id}/"
+        try:
+            self._request(
+                "POST",
+                post_url,
+                data=data,
+                files={"": ("", b"")},
+                headers={"Referer": post_url},
+            )
+        except httpx.HTTPStatusError as e:
+            return WriteResult(
+                success=False,
+                action="status",
+                issue_id=issue_id,
+                value=str(status),
+                message=f"POST failed: {e}",
+            )
+        status_label = dict(forms.status_options).get(status, str(status))
+        return WriteResult(
+            success=True,
+            action="status",
+            issue_id=issue_id,
+            value=str(status),
+            message=f"Status set to {status_label}",
+        )
+
+    def add_comment(
+        self,
+        issue_id: int,
+        comment: str,
+        *,
+        issue_url: str = "",
+    ) -> WriteResult:
+        """Add a comment to a submission."""
+        logger.info("Adding comment to issue %d", issue_id)
+        try:
+            forms = self._fetch_submission_forms(issue_id, issue_url)
+        except (httpx.HTTPStatusError, WriteError) as e:
+            return WriteResult(
+                success=False,
+                action="comment",
+                issue_id=issue_id,
+                value=comment[:50],
+                message=f"Failed to fetch submission page: {e}",
+            )
+
+        if not forms.has_comment_form:
+            return WriteResult(
+                success=False,
+                action="comment",
+                issue_id=issue_id,
+                value=comment[:50],
+                message="Comment form not available on this submission",
+            )
+
+        if not comment.strip():
+            return WriteResult(
+                success=False,
+                action="comment",
+                issue_id=issue_id,
+                value="",
+                message="Comment text is empty",
+            )
+
+        form_issue_id = forms.issue_id or issue_id
+        data: dict[str, str] = {
+            "csrfmiddlewaretoken": forms.csrf_token,
+            "form_name": "comment_form",
+            "issue_id": str(form_issue_id),
+            "comment": comment,
+            "update_issue": "",
+        }
+
+        referer = forms.page_url or f"{BASE_URL}/issue/{issue_id}/"
+        try:
+            self._request(
+                "POST",
+                f"{BASE_URL}/issue/upload/",
+                data=data,
+                files={"files[]": ("", b"")},
+                headers={"Referer": referer},
+            )
+        except httpx.HTTPStatusError as e:
+            return WriteResult(
+                success=False,
+                action="comment",
+                issue_id=issue_id,
+                value=comment[:50],
+                message=f"POST failed: {e}",
+            )
+        return WriteResult(
+            success=True,
+            action="comment",
+            issue_id=issue_id,
+            value=comment[:50],
+            message="Comment added",
+        )
 
     @staticmethod
     def _is_login_redirect(resp: httpx.Response) -> bool:
@@ -276,7 +535,9 @@ class AnytaskClient:
             if self._is_login_redirect(resp):
                 self._authenticated = False
                 if not self._has_credentials():
-                    raise LoginError("Saved session expired and no credentials were provided")
+                    raise LoginError(
+                        "Saved session expired and no credentials were provided"
+                    )
                 self.login()
                 with self._client.stream("GET", url) as retried:
                     retried.raise_for_status()
@@ -291,7 +552,9 @@ class AnytaskClient:
             return resp
 
     @staticmethod
-    def _validate_downloaded_file(path: Path, content_type: str, expected_suffix: str) -> str:
+    def _validate_downloaded_file(
+        path: Path, content_type: str, expected_suffix: str
+    ) -> str:
         """Validate downloaded file. Returns empty string if OK, or reason if invalid."""
         if not path.exists() or path.stat().st_size == 0:
             return "empty_file"
@@ -313,7 +576,9 @@ class AnytaskClient:
                 return "jupyter_server_html"
             return "html_instead_of_file"
 
-        if expected_suffix.lower() == ".ipynb" and not head_lower.lstrip().startswith(b"{"):
+        if expected_suffix.lower() == ".ipynb" and not head_lower.lstrip().startswith(
+            b"{"
+        ):
             return "invalid_notebook_format"
 
         if (
@@ -344,7 +609,9 @@ class AnytaskClient:
         except Exception:
             tmp_path.unlink(missing_ok=True)
             logger.exception("Download failed: %s", url)
-            return DownloadResult(success=False, path=output_path, reason="download_error")
+            return DownloadResult(
+                success=False, path=output_path, reason="download_error"
+            )
 
         content_type = resp.headers.get("content-type", "")
         problem = self._validate_downloaded_file(tmp_path, content_type, output.suffix)
@@ -357,11 +624,17 @@ class AnytaskClient:
         logger.debug("Download complete: %s", output_path)
         return DownloadResult(success=True, path=output_path, reason="ok")
 
-    def download_colab_notebook(self, colab_url: str, output_path: str) -> DownloadResult:
+    def download_colab_notebook(
+        self, colab_url: str, output_path: str
+    ) -> DownloadResult:
         """Try downloading a Colab notebook as .ipynb."""
-        m = _COLAB_FILE_ID_RE.search(colab_url) or re.search(r"drive/([a-zA-Z0-9_-]+)", colab_url)
+        m = _COLAB_FILE_ID_RE.search(colab_url) or re.search(
+            r"drive/([a-zA-Z0-9_-]+)", colab_url
+        )
         if m is None:
-            return DownloadResult(success=False, path=output_path, reason="no_file_id_in_url")
+            return DownloadResult(
+                success=False, path=output_path, reason="no_file_id_in_url"
+            )
 
         file_id = m.group(1)
         output = Path(output_path)
@@ -384,9 +657,9 @@ class AnytaskClient:
 
                     content = resp.content
                     content_lower = content[:1024].lower().strip()
-                    if content_lower.startswith(b"<!doctype html") or content_lower.startswith(
-                        b"<html"
-                    ):
+                    if content_lower.startswith(
+                        b"<!doctype html"
+                    ) or content_lower.startswith(b"<html"):
                         confirm_match = re.search(rb"confirm=([a-zA-Z0-9_-]+)", content)
                         if confirm_match:
                             confirm_url = (
@@ -394,7 +667,10 @@ class AnytaskClient:
                                 f"&export=download&confirm={confirm_match.group(1).decode()}"
                             )
                             resp2 = gc.get(confirm_url)
-                            if resp2.status_code == 200 and resp2.content.strip().startswith(b"{"):
+                            if (
+                                resp2.status_code == 200
+                                and resp2.content.strip().startswith(b"{")
+                            ):
                                 output.write_bytes(resp2.content)
                                 return DownloadResult(
                                     success=True,

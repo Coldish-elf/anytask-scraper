@@ -1,5 +1,3 @@
-"""Pydantic schemas mirroring anytask_scraper dataclasses."""
-
 from __future__ import annotations
 
 from datetime import datetime
@@ -212,3 +210,25 @@ class DBSyncResponse(BaseModel):
 
 
 DBEntry = dict[str, Any]
+
+
+class SetGradeRequest(BaseModel):
+    grade: float
+    comment: str = ""
+
+
+class SetStatusRequest(BaseModel):
+    status: str
+    comment: str = ""
+
+
+class AddCommentRequest(BaseModel):
+    comment: str
+
+
+class WriteResultSchema(BaseModel):
+    success: bool
+    action: str
+    issue_id: int
+    value: str
+    message: str = ""

@@ -274,7 +274,28 @@ MainScreen {
 
 #queue-detail-scroll {
     width: 100%;
-    height: 100%;
+    height: 1fr;
+}
+
+#queue-action-bar {
+    width: 100%;
+    height: auto;
+    padding: 1 0 0 0;
+    align: center middle;
+}
+
+#queue-action-bar.hidden {
+    display: none;
+}
+
+#queue-action-bar Button {
+    margin: 0 1;
+    min-width: 10;
+    text-style: none;
+}
+
+#queue-action-bar Button:focus {
+    text-style: none;
 }
 
 #queue-info-label {
@@ -645,7 +666,7 @@ SubmissionScreen {
 }
 
 .comment-card {
-    background: $surface-darken-1;
+    background: transparent;
     border-left: wide $primary;
     padding: 1 2;
     margin: 1 0;
@@ -658,7 +679,6 @@ SubmissionScreen {
 
 .comment-card.-system-event {
     border-left: wide $warning;
-    background: $surface-darken-2;
 }
 
 .comment-header {
@@ -688,10 +708,236 @@ SubmissionScreen {
     margin-top: 3;
 }
 
+#sub-action-bar {
+    height: auto;
+    padding: 0 2;
+    background: $surface;
+    align: left middle;
+}
+
+#sub-action-bar Button {
+    margin: 0 1 0 0;
+}
+
 #sub-key-bar {
     dock: bottom;
     height: 1;
     background: $surface;
     color: $text-muted;
     padding: 0 1;
+}
+
+GradeInputScreen, StatusSelectScreen, CommentInputScreen, AcceptAndRateScreen {
+    align: center middle;
+}
+
+GradeInputScreen Button,
+StatusSelectScreen Button,
+CommentInputScreen Button,
+AcceptAndRateScreen Button {
+    text-style: none;
+}
+
+GradeInputScreen Button:focus,
+StatusSelectScreen Button:focus,
+CommentInputScreen Button:focus,
+AcceptAndRateScreen Button:focus {
+    text-style: none;
+}
+
+#grade-modal {
+    width: 50;
+    height: auto;
+    background: $surface;
+    border: round $primary;
+    padding: 1 2;
+}
+
+#grade-modal Label {
+    margin-bottom: 1;
+}
+
+#grade-modal Input {
+    margin-bottom: 1;
+    background: $surface-darken-1;
+    border: solid $surface-lighten-2;
+    text-style: none;
+}
+
+#grade-modal Input:focus {
+    background: $surface-darken-1;
+    border: solid $accent;
+    text-style: none;
+}
+
+#grade-modal-buttons {
+    height: auto;
+    align: right middle;
+}
+
+#grade-modal-buttons Button {
+    margin-left: 1;
+}
+
+#status-modal {
+    width: 50;
+    height: auto;
+    background: $surface;
+    border: round $primary;
+    padding: 1 2;
+}
+
+#status-modal Label {
+    margin-bottom: 1;
+}
+
+#status-set {
+    height: auto;
+    margin-bottom: 1;
+    border: none;
+    padding: 0;
+}
+
+#status-set:focus {
+    border: none;
+    padding: 0;
+}
+
+#status-set RadioButton {
+    background: transparent;
+    height: 1;
+    min-height: 1;
+    padding: 0;
+    border: none;
+    margin: 0;
+}
+
+#status-set RadioButton:focus,
+#status-set RadioButton:hover,
+#status-set RadioButton.-selected,
+#status-set RadioButton.-highlight {
+    background: transparent;
+}
+
+#status-set RadioButton .toggle--button {
+    background: transparent;
+}
+
+#status-set RadioButton.-on .toggle--button {
+    color: $accent;
+    background: transparent;
+}
+
+#status-set RadioButton .toggle--label {
+    background: transparent;
+    text-style: none;
+}
+
+#status-set RadioButton.-on .toggle--label {
+    background: transparent;
+    text-style: none;
+    color: $text;
+}
+
+#status-set:focus RadioButton.-selected .toggle--label {
+    background: transparent;
+    color: $accent;
+    text-style: bold;
+}
+
+#status-set:focus RadioButton.-selected .toggle--button {
+    background: transparent;
+    text-style: none;
+}
+
+#status-modal-buttons {
+    height: auto;
+    align: right middle;
+}
+
+#status-modal-buttons Button {
+    margin-left: 1;
+}
+
+#comment-modal {
+    width: 60;
+    height: 20;
+    background: $surface;
+    border: round $primary;
+    padding: 1 2;
+}
+
+#comment-modal Label {
+    margin-bottom: 1;
+}
+
+#comment-input {
+    height: 1fr;
+    margin-bottom: 1;
+    background: $surface-darken-1;
+    border: solid $surface-lighten-2;
+    text-style: none;
+}
+
+#comment-input:focus {
+    background: $surface-darken-1;
+    border: solid $accent;
+    text-style: none;
+}
+
+#comment-modal-buttons {
+    height: auto;
+    align: right middle;
+}
+
+#comment-modal-buttons Button {
+    margin-left: 1;
+}
+
+#rate-modal {
+    width: 60;
+    height: 24;
+    background: $surface;
+    border: round $success;
+    padding: 1 2;
+}
+
+#rate-modal Label {
+    margin-bottom: 1;
+}
+
+#rate-grade-input {
+    margin-bottom: 1;
+    background: $surface-darken-1;
+    border: solid $surface-lighten-2;
+    text-style: none;
+}
+
+#rate-grade-input:focus {
+    background: $surface-darken-1;
+    border: solid $accent;
+    text-style: none;
+}
+
+#rate-comment-input {
+    height: 1fr;
+    margin-bottom: 1;
+    background: $surface-darken-1;
+    border: solid $surface-lighten-2;
+    text-style: none;
+}
+
+#rate-comment-input:focus {
+    background: $surface-darken-1;
+    border: solid $accent;
+    text-style: none;
+}
+
+#rate-modal-buttons {
+    height: auto;
+    align: right middle;
+}
+
+#rate-modal-buttons Button {
+    margin-left: 1;
 }

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from textual import on, work
 from textual.app import ComposeResult
@@ -13,11 +14,16 @@ from textual.widgets import Button, Input, Label
 from anytask_scraper.client import AnytaskClient, LoginError
 from anytask_scraper.tui.app import SESSION_FILE
 
+if TYPE_CHECKING:
+    from anytask_scraper.tui.app import AnytaskApp
+
 logger = logging.getLogger(__name__)
 
 
 class LoginScreen(Screen[None]):
     """Minimal login screen - credentials or saved session."""
+
+    app: AnytaskApp
 
     def compose(self) -> ComposeResult:
         with Center(), Vertical(id="login-box"):
@@ -100,8 +106,8 @@ class LoginScreen(Screen[None]):
         try:
             client = AnytaskClient(username=username, password=password)
             client.login()
-            self.app.client = client  # type: ignore[attr-defined]
-            self.app.session_path = ""  # type: ignore[attr-defined]
+            self.app.client = client
+            self.app.session_path = ""
             logger.info("TUI login successful for user %s", username)
             self.app.call_from_thread(self._set_status, f"Logged in as {username}", "success")
             self.app.call_from_thread(self._go_main)
@@ -122,8 +128,8 @@ class LoginScreen(Screen[None]):
                 logger.warning("Failed to load session from %s", session_path)
                 self.app.call_from_thread(self._set_status, "Failed to load session", "error")
                 return
-            self.app.client = client  # type: ignore[attr-defined]
-            self.app.session_path = session_path  # type: ignore[attr-defined]
+            self.app.client = client
+            self.app.session_path = session_path
             name = client.username or "saved session"
             logger.info("Session loaded for %s", name)
             self.app.call_from_thread(self._set_status, f"Loaded ({name})", "success")

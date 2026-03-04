@@ -325,6 +325,12 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Fetch full submission details and append comment events",
     )
+    db_sync_p.add_argument(
+        "--interval",
+        type=int,
+        default=None,
+        help="Repeat sync every N seconds (runs until Ctrl+C)",
+    )
     db_sync_p.add_argument("--filter-task", default="", help="Filter by task title")
     db_sync_p.add_argument("--filter-reviewer", default="", help="Filter by reviewer")
     db_sync_p.add_argument("--filter-status", default="", help="Filter by status")
@@ -467,6 +473,47 @@ def _build_parser() -> argparse.ArgumentParser:
     db_write_p.add_argument("--value", required=True, help="Action value")
     db_write_p.add_argument("--author", default="", help="Author performing write")
     db_write_p.add_argument("--note", default="", help="Optional note")
+
+    db_diff_p = db_sub.add_parser("diff", help="Show field-level changes from last sync")
+    db_diff_p.add_argument("--db-file", default="./queue_db.json", help="Path to queue DB file")
+    db_diff_p.add_argument("--course", "-c", type=int, default=None, help="Optional course ID")
+    db_diff_p.add_argument(
+        "--format", "-f", choices=["json", "table"], default="table", help="Output format"
+    )
+
+    db_stats_p = db_sub.add_parser("stats", help="Show queue entry counts by state")
+    db_stats_p.add_argument("--db-file", default="./queue_db.json", help="Path to queue DB file")
+    db_stats_p.add_argument("--course", "-c", type=int, default=None, help="Optional course ID")
+
+    push_p = subparsers.add_parser("push", help="Write grades, statuses, or comments")
+    push_sub = push_p.add_subparsers(dest="push_action", required=True)
+
+    push_grade_p = push_sub.add_parser("grade", help="Set grade on a submission")
+    push_grade_p.add_argument("--issue-id", type=int, required=True, help="Issue ID")
+    push_grade_p.add_argument("--grade", type=float, required=True, help="Grade value")
+    push_grade_p.add_argument("--comment", default="", help="Optional comment")
+    push_grade_p.add_argument(
+        "--dry-run", action="store_true", help="Show what would be sent without POSTing"
+    )
+
+    push_status_p = push_sub.add_parser("status", help="Set status on a submission")
+    push_status_p.add_argument("--issue-id", type=int, required=True, help="Issue ID")
+    push_status_p.add_argument(
+        "--status",
+        required=True,
+        help="Status: review (3), rework (4), or accepted (5)",
+    )
+    push_status_p.add_argument("--comment", default="", help="Optional comment")
+    push_status_p.add_argument(
+        "--dry-run", action="store_true", help="Show what would be sent without POSTing"
+    )
+
+    push_comment_p = push_sub.add_parser("comment", help="Add comment to a submission")
+    push_comment_p.add_argument("--issue-id", type=int, required=True, help="Issue ID")
+    push_comment_p.add_argument("--comment", required=True, help="Comment text")
+    push_comment_p.add_argument(
+        "--dry-run", action="store_true", help="Show what would be sent without POSTing"
+    )
 
     serve_p = subparsers.add_parser("serve", help="Start HTTP API server")
     serve_p.add_argument("--host", default="127.0.0.1", help="Bind host (default: 127.0.0.1)")
@@ -884,7 +931,7 @@ def _fetch_review_queue(
                     issue_id = extract_issue_id_from_breadcrumb(sub_html)
                     if issue_id == 0:
                         continue
-                    sub = parse_submission_page(sub_html, issue_id)
+                    sub = parse_submission_page(sub_html, issue_id, issue_url=entry.issue_url)
                     queue.submissions[entry.issue_url] = sub
                 except Exception as e:
                     err_console.print(
@@ -989,7 +1036,8 @@ def _print_pulled_entries(entries: list[dict[str, Any]], output_format: str) -> 
     console.print(table)
 
 
-def _run_db_sync(args: argparse.Namespace, client: AnytaskClient) -> None:
+def _run_db_sync_once(args: argparse.Namespace, client: AnytaskClient) -> None:
+    """Execute a single sync cycle."""
     queue, raw_total = _fetch_review_queue(
         client,
         course_id=args.course,
@@ -1024,6 +1072,37 @@ def _run_db_sync(args: argparse.Namespace, client: AnytaskClient) -> None:
         )
         console.print(f"[green][OK][/green] Pulled {len(pulled)} new entries")
         _print_pulled_entries(pulled, args.format)
+
+
+def _run_db_sync(args: argparse.Namespace, client: AnytaskClient) -> None:
+    import signal
+    import time
+
+    _run_db_sync_once(args, client)
+
+    interval = getattr(args, "interval", None)
+    if interval is None or interval <= 0:
+        return
+
+    stop = False
+
+    def _sigint_handler(_signum: int, _frame: object) -> None:
+        nonlocal stop
+        stop = True
+
+    signal.signal(signal.SIGINT, _sigint_handler)
+    sync_count = 1
+    console.print(f"[dim]Repeating every {interval}s. Press Ctrl+C to stop.[/dim]")
+
+    while not stop:
+        time.sleep(interval)
+        if stop:
+            break
+        sync_count += 1
+        console.print(f"\n[dim]-- sync #{sync_count} --[/dim]")
+        _run_db_sync_once(args, client)
+
+    console.print(f"\n[dim]Stopped after {sync_count} sync(s).[/dim]")
 
 
 def _run_db_pull(args: argparse.Namespace) -> None:
@@ -1083,6 +1162,63 @@ def _run_db_write(args: argparse.Namespace) -> None:
     )
 
 
+def _run_db_diff(args: argparse.Namespace) -> None:
+    db = QueueJsonDB(args.db_file)
+    changed = db.get_changed_entries(course_id=args.course)
+    if not changed:
+        console.print("[dim]No changes found.[/dim]")
+        return
+
+    if args.format == "json":
+        console.print_json(json.dumps(changed, ensure_ascii=False))
+        return
+
+    from rich.table import Table
+
+    table = Table(title="Queue Diff", show_lines=True)
+    table.add_column("Student")
+    table.add_column("Task")
+    table.add_column("Field")
+    table.add_column("Old", style="red")
+    table.add_column("New", style="green")
+    for entry in changed:
+        for diff in entry["diffs"]:
+            table.add_row(
+                entry["student_name"],
+                entry["task_title"],
+                diff["field"],
+                diff["old"],
+                diff["new"],
+            )
+    console.print(table)
+
+
+def _run_db_stats(args: argparse.Namespace) -> None:
+    db = QueueJsonDB(args.db_file)
+    stats = db.statistics(course_id=args.course)
+
+    from rich.table import Table
+
+    table = Table(title="Queue Statistics")
+    table.add_column("Metric")
+    table.add_column("Count", justify="right")
+    table.add_row("Total", str(stats["total"]))
+    table.add_row("[bold yellow]New[/bold yellow]", str(stats["new"]))
+    table.add_row("[bold blue]Pulled[/bold blue]", str(stats["pulled"]))
+    table.add_row("[bold green]Processed[/bold green]", str(stats["processed"]))
+
+    by_course = stats.get("by_course", {})
+    if by_course:
+        for cid, cc in sorted(by_course.items()):
+            table.add_section()
+            table.add_row(f"[dim]Course {cid}[/dim]", "")
+            table.add_row("  Total", str(cc["total"]))
+            table.add_row("  New", str(cc["new"]))
+            table.add_row("  Pulled", str(cc["pulled"]))
+            table.add_row("  Processed", str(cc["processed"]))
+    console.print(table)
+
+
 def _run_db(args: argparse.Namespace, client: AnytaskClient | None = None) -> None:
     if args.db_action == "sync":
         if client is None:
@@ -1097,6 +1233,12 @@ def _run_db(args: argparse.Namespace, client: AnytaskClient | None = None) -> No
         return
     if args.db_action == "write":
         _run_db_write(args)
+        return
+    if args.db_action == "diff":
+        _run_db_diff(args)
+        return
+    if args.db_action == "stats":
+        _run_db_stats(args)
         return
     raise ValueError(f"Unsupported db action: {args.db_action}")
 
@@ -1180,6 +1322,76 @@ def _run_serve(args: argparse.Namespace) -> None:
         uvicorn.run(app, host=args.host, port=args.port)
 
 
+_STATUS_NAMES: dict[str, int] = {
+    "review": 3,
+    "rework": 4,
+    "accepted": 5,
+}
+
+
+def _resolve_status(value: str) -> int:
+    """Resolve human-readable status name or integer to status code."""
+    if value in _STATUS_NAMES:
+        return _STATUS_NAMES[value]
+    try:
+        code = int(value)
+    except ValueError as exc:
+        valid = ", ".join(_STATUS_NAMES)
+        raise argparse.ArgumentTypeError(
+            f"Invalid status '{value}'. Use: {valid} or 3/4/5"
+        ) from exc
+    return code
+
+
+def _run_push(args: argparse.Namespace, client: AnytaskClient) -> None:
+    from anytask_scraper.parser import extract_submission_forms
+
+    if args.push_action == "grade":
+        if args.dry_run:
+            issue_html = client.fetch_submission_page(f"/issue/{args.issue_id}/")
+            forms = extract_submission_forms(issue_html)
+            console.print(
+                f"[bold]Dry run:[/bold] Would set grade {args.grade} on issue {args.issue_id}"
+            )
+            console.print(f"  Max score: {forms.max_score}")
+            console.print(f"  Grade form available: {forms.has_grade_form}")
+            return
+        result = client.set_grade(args.issue_id, args.grade, comment=args.comment)
+    elif args.push_action == "status":
+        status_code = _resolve_status(args.status)
+        if args.dry_run:
+            issue_html = client.fetch_submission_page(f"/issue/{args.issue_id}/")
+            forms = extract_submission_forms(issue_html)
+            labels = {c: n for c, n in forms.status_options}
+            console.print(
+                f"[bold]Dry run:[/bold] Would set status {status_code}"
+                f" ({labels.get(status_code, '?')}) on issue {args.issue_id}"
+            )
+            console.print(f"  Status form available: {forms.has_status_form}")
+            console.print(
+                f"  Available statuses: {', '.join(f'{c}={n}' for c, n in forms.status_options)}"
+            )
+            return
+        result = client.set_status(args.issue_id, status_code, comment=args.comment)
+    elif args.push_action == "comment":
+        if args.dry_run:
+            issue_html = client.fetch_submission_page(f"/issue/{args.issue_id}/")
+            forms = extract_submission_forms(issue_html)
+            console.print(f"[bold]Dry run:[/bold] Would add comment to issue {args.issue_id}")
+            console.print(f"  Comment form available: {forms.has_comment_form}")
+            console.print(f"  Comment length: {len(args.comment)} chars")
+            return
+        result = client.add_comment(args.issue_id, args.comment)
+    else:
+        raise ValueError(f"Unsupported push action: {args.push_action}")
+
+    if result.success:
+        console.print(f"[bold green]✓[/bold green] {result.message}")
+    else:
+        err_console.print(f"[bold red]✗[/bold red] {result.message}")
+        sys.exit(1)
+
+
 def main(argv: list[str] | None = None) -> None:
     parser = _build_parser()
     args = parser.parse_args(argv)
@@ -1214,7 +1426,7 @@ def main(argv: list[str] | None = None) -> None:
         err_console.print(f"[bold red]Settings error:[/bold red] {e}")
         sys.exit(1)
 
-    if args.command == "db" and args.db_action in {"pull", "process", "write"}:
+    if args.command == "db" and args.db_action in {"pull", "process", "write", "diff", "stats"}:
         try:
             _run_db(args, client=None)
             return
@@ -1251,6 +1463,8 @@ def main(argv: list[str] | None = None) -> None:
                 _run_queue(args, client)
             elif args.command == "db":
                 _run_db(args, client)
+            elif args.command == "push":
+                _run_push(args, client)
 
             if args.session_file and args.save_session:
                 client.save_session(args.session_file)

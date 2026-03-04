@@ -76,5 +76,4 @@ anytask-scraper db pull -c 12345 --db-file ./output/queue_db.json \
 - [Форматы экспорта](docs/Export_Formats.md)
 - [Архитектура](docs/Architecture.md)
 - [Справочник библиотеки](docs/Library_Reference.md)
-- [Roadmap](docs/roadmap.md)
 - [Changelog](docs/Changelog.md)
