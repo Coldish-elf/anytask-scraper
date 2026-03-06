@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.10.1] - 2026-03-06
+
+### Добавлено
+
+- CI через Gitea Actions и GitHub Actions: тесты, линтинг, проверка типов на каждый PR.
+- Маркер `py.typed` (PEP 561) для типизированного пакета.
+- Аутентификация API запросов bearer-токеном через переменную окружения `ANYTASK_API_TOKEN`.
+- Docker-образ и `.dockerignore` для запуска API-сервера в контейнере.
+
+### Изменено
+
+- Рефактор `MainScreen` на 5 mixin-модулей в: `_core.py`, `_tasks.py`, `_queue.py`, `_gradebook.py`, `_export.py`, и общий `_helpers.py`.
+- Обновлён roadmap: убраны спекулятивные пункты, multi-account и rate limiting перенесены в Future.
+- Удалены избыточные комментарии из кодовой базы.
+
 ## [0.10.0] - 2026-03-04
 
 ### Добавлено

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "anytask-scraper"
-version = "0.10.0"
+version = "0.10.1"
 description = "CLI, TUI and Python library for anytask.org"
 readme = "README.md"
 license = {text = "MIT"}
@@ -49,6 +49,7 @@ select = ["E", "F", "I", "N", "UP", "B", "SIM"]
 python_version = "3.10"
 strict = true
 warn_return_any = true
+warn_unused_ignores = false
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

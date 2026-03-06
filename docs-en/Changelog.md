@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.10.1] - 2026-03-06
+
+### Added
+
+- GitHub Actions CI: tests, lint, typecheck on each PR.
+- `py.typed` marker (PEP 561) for typed package consumers.
+- API bearer token authentication via `ANYTASK_API_TOKEN` environment variable.
+- Docker image and `.dockerignore` for ready-to-run API server container.
+
+### Changed
+
+- Refactor `MainScreen` into 5 mixin modules: `_core.py`, `_tasks.py`, `_queue.py`, `_gradebook.py`, `_export.py`, plus shared `_helpers.py`.
+
 ## [0.10.0] - 2026-03-04
 
 ### Added

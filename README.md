@@ -68,12 +68,12 @@ anytask-scraper db pull -c 12345 --db-file ./output/queue_db.json \
 
 ## Документация
 
-- [Быстрый старт](docs/QuickStart.md)
-- [CLI](docs/CLI.md)
-- [TUI](docs/TUI.md)
-- [HTTP API](docs/API.md)
-- [Конфигурация](docs/Configuration.md)
-- [Форматы экспорта](docs/Export_Formats.md)
-- [Архитектура](docs/Architecture.md)
-- [Справочник библиотеки](docs/Library_Reference.md)
-- [Changelog](docs/Changelog.md)
+- [Быстрый старт](docs-ru/QuickStart.md)
+- [CLI](docs-ru/CLI.md)
+- [TUI](docs-ru/TUI.md)
+- [HTTP API](docs-ru/API.md)
+- [Конфигурация](docs-ru/Configuration.md)
+- [Форматы экспорта](docs-ru/Export_Formats.md)
+- [Архитектура](docs-ru/Architecture.md)
+- [Справочник библиотеки](docs-ru/Library_Reference.md)
+- [Changelog](docs-ru/Changelog.md)
