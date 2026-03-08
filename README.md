@@ -4,24 +4,14 @@
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
-[Русская версия](README.ru.md)
+[На русском](README.ru.md)
 
 `anytask-scraper` is a Python toolkit for working with [anytask.org](https://anytask.org/). It includes:
 
-- a CLI for exporting and inspecting course data
+- a CLI
 - a TUI for interactive browsing
 - an optional HTTP API for local automation
-- a typed Python library for scripting and integrations
-
-All examples in this repository use placeholder course IDs and synthetic credentials.
-
-## Highlights
-
-- `src/` layout with a reusable library and console entry points
-- export support for JSON, CSV, and Markdown
-- review queue and gradebook workflows
-- optional FastAPI server for local HTTP access
-- test suite, linting, type-checking, and CI
+- a Python library for scripting and integrations
 
 ## Requirements
 
@@ -29,7 +19,7 @@ All examples in this repository use placeholder course IDs and synthetic credent
 
 ## Installation
 
-Library only (for integrations):
+Library only:
 
 ```bash
 pip install "git+https://github.com/Coldish-elf/anytask_scraper.git"
@@ -57,7 +47,7 @@ pip install -e ".[dev,api]"
 
 ## Quick Start
 
-Initialize local settings and a credential template:
+Initialize settings and fill a credential template:
 
 ```bash
 anytask-scraper settings init
@@ -116,20 +106,3 @@ Russian:
 - [Форматы экспорта](docs-ru/Export_Formats.md)
 - [Архитектура](docs-ru/Architecture.md)
 - [Справочник библиотеки](docs-ru/Library_Reference.md)
-
-## Development
-
-Run the local quality checks:
-
-```bash
-pytest -q
-ruff check src tests
-ruff format --check src tests
-mypy src
-```
-
-Build the package artifacts:
-
-```bash
-python -m build
-```

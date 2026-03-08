@@ -1,23 +1,17 @@
 # Anytask Scraper
 
+[![CI](https://github.com/Coldish-elf/anytask_scraper/actions/workflows/ci.yml/badge.svg)](https://github.com/Coldish-elf/anytask_scraper/actions/workflows/ci.yml)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+
 [English](README.md)
 
 `anytask-scraper` - Python-инструментарий для работы с [anytask.org](https://anytask.org/). В репозитории есть:
 
-- CLI для экспорта и просмотра данных курса
+- CLI
 - TUI для интерактивной навигации
 - опциональный HTTP API для локальной автоматизации
-- типизированная Python-библиотека для скриптов и интеграций
-
-Во всех примерах используются только условные course ID и синтетические учётные данные.
-
-## Что внутри
-
-- `src/` layout с библиотекой и консольными entry point
-- экспорт в JSON, CSV и Markdown
-- сценарии для очереди проверок и ведомости
-- опциональный FastAPI-сервер для локального HTTP-доступа
-- тесты, линтер, type-checking и CI
+- Python-библиотека для скриптов и интеграций
 
 ## Требования
 
@@ -25,16 +19,22 @@
 
 ## Установка
 
-Установка из текущей ветки:
+Только библиотека:
 
 ```bash
 pip install "git+https://github.com/Coldish-elf/anytask_scraper.git"
 ```
 
-С поддержкой API:
+С CLI и TUI:
 
 ```bash
-pip install "anytask-scraper[api] @ git+https://github.com/Coldish-elf/anytask_scraper.git"
+pip install "anytask-scraper[tui] @ git+https://github.com/Coldish-elf/anytask_scraper.git"
+```
+
+С HTTP API сервером:
+
+```bash
+pip install "anytask-scraper[tui,api] @ git+https://github.com/Coldish-elf/anytask_scraper.git"
 ```
 
 Для локальной разработки:
@@ -47,7 +47,7 @@ pip install -e ".[dev,api]"
 
 ## Быстрый старт
 
-Инициализируйте локальные настройки и шаблон учётных данных:
+Инициализируйте и заполните шаблон учетных данных:
 
 ```bash
 anytask-scraper settings init
@@ -65,7 +65,7 @@ anytask-scraper -h
 anytask-scraper course -c 12345 --show
 ```
 
-Получите очередь проверок:
+Получите очередь на проверку:
 
 ```bash
 anytask-scraper queue -c 12345 --show
@@ -106,25 +106,3 @@ English:
 - [Форматы экспорта](docs-ru/Export_Formats.md)
 - [Архитектура](docs-ru/Architecture.md)
 - [Справочник библиотеки](docs-ru/Library_Reference.md)
-
-Файлы репозитория:
-
-- [Contributing](CONTRIBUTING.md)
-- [Changelog](CHANGELOG.md)
-
-## Разработка
-
-Локальные проверки:
-
-```bash
-pytest -q
-ruff check src tests
-ruff format --check src tests
-mypy src
-```
-
-Сборка пакета:
-
-```bash
-python -m build
-```
