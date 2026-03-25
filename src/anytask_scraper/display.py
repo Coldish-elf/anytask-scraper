@@ -50,7 +50,6 @@ def _score_text(task: Task) -> str:
 
 
 def display_course(course: Course, console: Console | None = None) -> None:
-    """Render course view."""
     logger.debug("Rendering course %d (%d tasks)", course.course_id, len(course.tasks))
     if console is None:
         console = Console()
@@ -118,7 +117,6 @@ def _display_teacher_tasks(tasks: list[Task], console: Console) -> None:
 
 
 def display_task_detail(task: Task, console: Console | None = None) -> None:
-    """Render task details."""
     if console is None:
         console = Console()
 
@@ -137,7 +135,6 @@ _QUEUE_STATUS_COLORS: dict[str, str] = {
 
 
 def display_queue(queue: ReviewQueue, console: Console | None = None) -> None:
-    """Render review queue."""
     logger.debug("Rendering queue (%d entries)", len(queue.entries))
     if console is None:
         console = Console()
@@ -180,7 +177,6 @@ def display_queue(queue: ReviewQueue, console: Console | None = None) -> None:
 
 
 def display_submission(submission: Submission, console: Console | None = None) -> None:
-    """Render submission thread."""
     if console is None:
         console = Console()
 
@@ -220,7 +216,6 @@ _GRADEBOOK_COLOR_MAP: dict[str, str] = {
 
 
 def display_gradebook(gradebook: Gradebook, console: Console | None = None) -> None:
-    """Render gradebook tables."""
     logger.debug("Rendering gradebook (%d groups)", len(gradebook.groups))
     if console is None:
         console = Console()

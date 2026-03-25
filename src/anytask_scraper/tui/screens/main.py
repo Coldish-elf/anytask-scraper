@@ -18,6 +18,7 @@ from textual.widgets import (
     Static,
     TabbedContent,
     TabPane,
+    TextArea,
 )
 
 from anytask_scraper.models import (
@@ -151,6 +152,7 @@ class MainScreen(ExportMixin, GradebookMixin, QueueMixin, TasksMixin, CoreMixin,
             "#export-filter-status": "Status",
             "#export-filter-reviewer": "Reviewer",
         }
+        self._export_name_list: list[str] = []
 
     def compose(self) -> ComposeResult:
         client = getattr(self.app, "client", None)
@@ -285,6 +287,31 @@ class MainScreen(ExportMixin, GradebookMixin, QueueMixin, TasksMixin, CoreMixin,
                                     placeholder="To (П … Петров)",
                                     id="export-ln-to",
                                 )
+                        with Container(
+                            classes="export-section",
+                            id="export-names-section",
+                        ):
+                            yield Label(
+                                "Name List Filter",
+                                classes="export-section-title",
+                            )
+                            yield Label(
+                                "No names loaded (filter inactive)",
+                                id="export-names-status-label",
+                                classes="export-filter-desc",
+                            )
+                            with Horizontal(id="export-names-file-row"):
+                                yield Input(
+                                    placeholder="Path to .txt file (one name per line)...",
+                                    id="export-names-file-input",
+                                )
+                                yield Button(
+                                    "Load",
+                                    id="export-names-load-btn",
+                                )
+                            yield TextArea(
+                                id="export-names-textarea",
+                            )
                         with Container(classes="export-section", id="export-params-section"):
                             yield ParameterSelector(id="param-selector", classes="export-section")
                         with Container(classes="export-section"):
@@ -293,11 +320,23 @@ class MainScreen(ExportMixin, GradebookMixin, QueueMixin, TasksMixin, CoreMixin,
                                 yield RadioButton(
                                     "Skip files",
                                     id="export-subs-files-off-radio",
-                                    value=True,
                                 )
                                 yield RadioButton(
                                     "Include files",
                                     id="export-subs-files-on-radio",
+                                    value=True,
+                                )
+                        with Container(classes="export-section"):
+                            yield Label("GitHub Repos", classes="export-section-title")
+                            with RadioSet(id="export-clone-repos-set"):
+                                yield RadioButton(
+                                    "Skip repos",
+                                    id="export-clone-repos-off-radio",
+                                )
+                                yield RadioButton(
+                                    "Clone repos",
+                                    value=True,
+                                    id="export-clone-repos-on-radio",
                                 )
                         with Container(classes="export-section"):
                             yield Label("Output Directory", classes="export-section-title")

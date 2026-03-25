@@ -12,7 +12,6 @@ from anytask_scraper.models import WriteResult
 
 @pytest.fixture()
 def _setup():
-    """Create a test app with mocked client, entered via TestClient context."""
     application = create_app()
     mock_client = MagicMock()
     mock_client._authenticated = True

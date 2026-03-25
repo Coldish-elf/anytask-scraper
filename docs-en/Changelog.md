@@ -1,5 +1,29 @@
 # Changelog
 
+## [1.1.0] - 2026-03-24
+
+### Added
+
+- GitHub repo cloning: Automatically clone GitHub repositories from student submissions.
+- Name list filter: Filter exports by a list of student names from a text file or pasted text.
+- Queue preview now displays comment links.
+
+### Changed
+
+- TUI export defaults: "Include files" and "Clone repos" are now ON by default instead of OFF.
+
+### Fixed
+
+- Failed fetches now report count and details in the status bar.
+- "Files Only" export no longer blocked by disabled "Include files" toggle: Files Only mode now implies file inclusion, removing the redundant validation gate.
+- "Files Only" button stayed disabled on first switch to Submissions export type until data preload completed.
+- TUI MainScreen not pushed after auto-login due to Textual call_from_thread not dispatching bound methods from worker threads (closures required).
+- CLI session never loaded when settings file lacks session_file key: _merge_runtime_settings now applies all INIT_DEFAULTS as fallbacks.
+- TUI autologin now tries both new and old session paths, with one-time migration and proper login-screen fallback.
+- format_student_folder() now sanitizes unsafe filesystem characters (/ \ < > : " | ? * and control chars), not just spaces.
+- Session file moved from CWD-relative (.anytask_session.json) to ~/.config/anytask-scraper/session.json - autologin now works from any directory. One-time migration from old location is automatic.
+- TUI settings file lookup now checks ~/.config/anytask-scraper/settings.json first, with CWD fallback.
+
 ## [1.0.0] - 2026-03-08
 
 ### Changed

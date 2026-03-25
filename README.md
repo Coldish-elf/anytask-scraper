@@ -4,7 +4,7 @@
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
-[На русском](README.ru.md)
+[Русский](README.ru.md)
 
 `anytask-scraper` is a Python toolkit for working with [anytask.org](https://anytask.org/). It includes:
 

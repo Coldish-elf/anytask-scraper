@@ -8,7 +8,16 @@ from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
 from textual import on, work
-from textual.widgets import Button, Input, Label, OptionList, RadioButton, RadioSet, Static
+from textual.widgets import (
+    Button,
+    Input,
+    Label,
+    OptionList,
+    RadioButton,
+    RadioSet,
+    Static,
+    TextArea,
+)
 from textual.widgets.option_list import Option
 
 from anytask_scraper.tui.export_params import (
@@ -46,6 +55,7 @@ class ExportMixin:
     _export_filter_values: dict[str, list[str]]
     _export_filter_selected: dict[str, set[str]]
     _export_filter_prompts: dict[str, str]
+    _export_name_list: list[str]
     _queue_loaded_for: int | None
 
     focused: Any
@@ -58,8 +68,11 @@ class ExportMixin:
         "#export-filter-reviewer",
         "#export-ln-from",
         "#export-ln-to",
+        "#export-names-file-input",
+        "#export-names-textarea",
         "#param-option-list",
         "#export-include-files-set",
+        "#export-clone-repos-set",
         "#output-dir-input",
         "#export-filename-input",
         "#export-btn",
@@ -119,13 +132,24 @@ class ExportMixin:
             self._update_params()
             self._refresh_export_preview()
         else:
+            self._update_export_filters()
             self._set_export_filters_loading_state()
             self._refresh_export_preview()
             self._start_export_preload(export_type)
 
     @on(RadioSet.Changed, "#format-set")
     def _format_changed(self, event: RadioSet.Changed) -> None:
+        fmt = self._get_current_export_format()
+        if fmt == "files":
+            self._set_include_files_disabled(True)
+        else:
+            export_type = self._get_current_export_type()
+            self._set_include_files_disabled(export_type != "subs-export-radio")
         self._refresh_export_preview()
+
+    def _set_include_files_disabled(self, disabled: bool) -> None:
+        with suppress(Exception):
+            self.query_one("#export-include-files-set", RadioSet).disabled = disabled  # type: ignore[attr-defined]
 
     @on(OptionList.OptionSelected, "#export-filter-task")
     @on(OptionList.OptionSelected, "#export-filter-status")
@@ -155,6 +179,39 @@ class ExportMixin:
     def _export_ln_range_changed(self, event: Input.Changed) -> None:
         event.stop()
         self._refresh_export_preview()
+
+    @on(TextArea.Changed, "#export-names-textarea")
+    def _export_names_textarea_changed(self, event: TextArea.Changed) -> None:
+        event.stop()
+        from anytask_scraper.models import parse_name_list
+
+        self._export_name_list = parse_name_list(event.text_area.text)
+        self._refresh_names_status_label()
+        self._refresh_export_preview()
+
+    @on(Button.Pressed, "#export-names-load-btn")
+    def _export_names_load_btn_pressed(self, event: Button.Pressed) -> None:
+        event.stop()
+        try:
+            path_str = self.query_one("#export-names-file-input", Input).value.strip()  # type: ignore[attr-defined]
+            if not path_str:
+                return
+            fpath = Path(path_str).expanduser()
+            if fpath.stat().st_size > 100_000:
+                self._set_export_status("Names file is too large (> 100 KB)", "error")
+                return
+            text = fpath.read_text(encoding="utf-8")
+            ta = self.query_one("#export-names-textarea", TextArea)  # type: ignore[attr-defined]
+            ta.load_text(text)
+        except (OSError, UnicodeDecodeError) as e:
+            self._set_export_status(f"Cannot load names file: {e}", "error")
+
+    def _refresh_names_status_label(self) -> None:
+        n = len(self._export_name_list)
+        with suppress(Exception):
+            self.query_one("#export-names-status-label", Label).update(  # type: ignore[attr-defined]
+                f"Names loaded: {n}" if n else "No names loaded (filter inactive)"
+            )
 
     def _update_export_filters(self) -> None:
         try:
@@ -193,30 +250,30 @@ class ExportMixin:
             self._export_filter_prompts["#export-filter-reviewer"] = "Reviewer"
 
         is_db_export = export_type == "db-export-radio"
-        with suppress(Exception):
-            self.query_one("#md-radio", RadioButton).disabled = is_db_export  # type: ignore[attr-defined]
-        with suppress(Exception):
-            self.query_one("#csv-radio", RadioButton).disabled = is_db_export  # type: ignore[attr-defined]
-        with suppress(Exception):
-            self.query_one("#files-radio", RadioButton).disabled = (  # type: ignore[attr-defined]
-                export_type != "subs-export-radio" or is_db_export
-            )
+        is_subs_export = export_type == "subs-export-radio"
+        for widget_id, disabled in [
+            ("#md-radio", is_db_export),
+            ("#csv-radio", is_db_export),
+            ("#files-radio", not is_subs_export or is_db_export),
+        ]:
+            with suppress(Exception):
+                self.query_one(widget_id, RadioButton).disabled = disabled  # type: ignore[attr-defined]
         if is_db_export:
             with suppress(Exception):
                 self.query_one("#json-radio", RadioButton).value = True  # type: ignore[attr-defined]
-        try:
-            include_files_set = self.query_one("#export-include-files-set", RadioSet)  # type: ignore[attr-defined]
-            include_files_set.disabled = export_type != "subs-export-radio"
-        except Exception:
-            logger.debug("Failed to update include files selector", exc_info=True)
-        try:
-            ln_from = self.query_one("#export-ln-from", Input)  # type: ignore[attr-defined]
-            ln_to = self.query_one("#export-ln-to", Input)  # type: ignore[attr-defined]
-            is_tasks = export_type == "tasks-export-radio"
-            ln_from.disabled = is_tasks
-            ln_to.disabled = is_tasks
-        except Exception:
-            logger.debug("Failed to update last-name range inputs", exc_info=True)
+        subs_only = export_type != "subs-export-radio"
+        with suppress(Exception):
+            self.query_one("#export-include-files-set", RadioSet).disabled = subs_only  # type: ignore[attr-defined]
+        with suppress(Exception):
+            self.query_one("#export-clone-repos-set", RadioSet).disabled = subs_only  # type: ignore[attr-defined]
+
+        is_tasks = export_type == "tasks-export-radio"
+        with suppress(Exception):
+            self.query_one("#export-ln-from", Input).disabled = is_tasks  # type: ignore[attr-defined]
+        with suppress(Exception):
+            self.query_one("#export-ln-to", Input).disabled = is_tasks  # type: ignore[attr-defined]
+        with suppress(Exception):
+            self.query_one("#export-names-section").disabled = is_tasks  # type: ignore[attr-defined]
 
         if export_type == "tasks-export-radio":
             titles = sorted({t.title for t in self.all_tasks if t.title})
@@ -411,6 +468,8 @@ class ExportMixin:
                     filters["last_name_from"] = ln_from
                 if ln_to:
                     filters["last_name_to"] = ln_to
+                if self._export_name_list:
+                    filters["name_list"] = list(self._export_name_list)
         except Exception:
             logger.debug("Failed to collect export filters", exc_info=True)
         return filters
@@ -457,6 +516,11 @@ class ExportMixin:
         event.stop()
         self._refresh_export_preview()
 
+    @on(RadioSet.Changed, "#export-clone-repos-set")
+    def _clone_repos_changed(self, event: RadioSet.Changed) -> None:
+        event.stop()
+        self._refresh_export_preview()
+
     def _get_included_columns(self) -> list[str]:
         try:
             selector = self.query_one("#param-selector", ParameterSelector)  # type: ignore[attr-defined]
@@ -489,6 +553,14 @@ class ExportMixin:
             files_set = self.query_one("#export-include-files-set", RadioSet)  # type: ignore[attr-defined]
             btn = files_set.pressed_button
             return bool(btn and btn.id == "export-subs-files-on-radio")
+        except Exception:
+            return False
+
+    def _get_clone_repos(self) -> bool:
+        try:
+            repos_set = self.query_one("#export-clone-repos-set", RadioSet)  # type: ignore[attr-defined]
+            btn = repos_set.pressed_button
+            return bool(btn and btn.id == "export-clone-repos-on-radio")
         except Exception:
             return False
 
@@ -616,7 +688,12 @@ class ExportMixin:
             return "json"
 
     def _generate_preview(self, export_type: str, format_type: str) -> str:
-        from anytask_scraper.models import GradebookGroup, ReviewQueue, last_name_in_range
+        from anytask_scraper.models import (
+            GradebookGroup,
+            ReviewQueue,
+            last_name_in_range,
+            name_matches_list,
+        )
 
         if self._selected_course_id is None:
             return "[dim]Select a course first[/dim]"
@@ -633,6 +710,7 @@ class ExportMixin:
         teacher_filters = _extract_filter_values(filters, "teacher")
         last_name_from = _extract_filter_text(filters, "last_name_from")
         last_name_to = _extract_filter_text(filters, "last_name_to")
+        name_list_filter = list(_extract_filter_values(filters, "name_list"))
 
         if export_type == "tasks-export-radio":
             tasks = list(self.all_tasks)
@@ -669,6 +747,10 @@ class ExportMixin:
                         last_name_to,
                     )
                 ]
+            if name_list_filter:
+                q_entries = [
+                    e for e in q_entries if name_matches_list(e.student_name, name_list_filter)
+                ]
             if not q_entries:
                 return "[dim]Queue data will be loaded during export[/dim]"
             return self._preview_queue(
@@ -686,7 +768,7 @@ class ExportMixin:
                 groups = [g for g in groups if g.group_name in group_filters]
             if teacher_filters:
                 groups = [g for g in groups if g.teacher_name in teacher_filters]
-            if last_name_from or last_name_to:
+            if last_name_from or last_name_to or name_list_filter:
                 groups = [
                     GradebookGroup(
                         group_name=g.group_name,
@@ -698,6 +780,10 @@ class ExportMixin:
                             e
                             for e in g.entries
                             if last_name_in_range(e.student_name, last_name_from, last_name_to)
+                            and (
+                                not name_list_filter
+                                or name_matches_list(e.student_name, name_list_filter)
+                            )
                         ],
                     )
                     for g in groups
@@ -710,11 +796,6 @@ class ExportMixin:
 
         elif export_type == "subs-export-radio":
             if format_type == "files":
-                if not self._get_include_submission_files():
-                    return (
-                        "[dim]Files Only mode requires enabling\n"
-                        "'Include files (Submissions)'[/dim]"
-                    )
                 return "[dim]Files Only mode:\nDownloads submission files\nto student folders[/dim]"
             sub_entries = list(self.all_queue_entries)
             if not sub_entries:
@@ -735,6 +816,10 @@ class ExportMixin:
                         last_name_from,
                         last_name_to,
                     )
+                ]
+            if name_list_filter:
+                sub_entries = [
+                    e for e in sub_entries if name_matches_list(e.student_name, name_list_filter)
                 ]
             if not sub_entries:
                 return "[dim]Queue data will be loaded during export[/dim]"
@@ -766,6 +851,10 @@ class ExportMixin:
                         last_name_from,
                         last_name_to,
                     )
+                ]
+            if name_list_filter:
+                queue_entries = [
+                    e for e in queue_entries if name_matches_list(e.student_name, name_list_filter)
                 ]
             if format_type != "json":
                 return "[dim]DB export supports JSON format only[/dim]"
@@ -1232,13 +1321,8 @@ class ExportMixin:
         filters = self._get_current_export_filters()
         columns = self._get_included_columns()
         filename = self._get_custom_export_filename()
-        include_files = self._get_include_submission_files()
-        if export_type == "subs-export-radio" and fmt == "files" and not include_files:
-            self._set_export_status(
-                "Enable 'Include files (Submissions)' for Files Only export",
-                "error",
-            )
-            return
+        include_files = self._get_include_submission_files() or fmt == "files"
+        clone_repos = self._get_clone_repos()
         if export_type == "db-export-radio" and fmt != "json":
             self._set_export_status("DB export supports JSON format only", "error")
             return
@@ -1251,6 +1335,7 @@ class ExportMixin:
             columns,
             filename,
             include_files,
+            clone_repos,
         )
 
     def _set_export_status(self, message: str, kind: str = "info") -> None:
@@ -1269,10 +1354,18 @@ class ExportMixin:
         columns: list[str] | None = None,
         filename: str | None = None,
         include_files: bool = False,
+        clone_repos: bool = False,
     ) -> None:
         import sys
 
-        from anytask_scraper.models import Course, GradebookGroup, ReviewQueue, last_name_in_range
+        from anytask_scraper.models import (
+            Course,
+            GradebookGroup,
+            ReviewQueue,
+            check_name_list_matches,
+            last_name_in_range,
+            name_matches_list,
+        )
         from anytask_scraper.parser import extract_issue_id_from_breadcrumb as _eid
         from anytask_scraper.parser import parse_submission_page as _psp
         from anytask_scraper.storage import (
@@ -1312,6 +1405,7 @@ class ExportMixin:
             teacher_filters = _extract_filter_values(filters, "teacher")
             last_name_from = _extract_filter_text(filters, "last_name_from")
             last_name_to = _extract_filter_text(filters, "last_name_to")
+            name_list_filter = list(_extract_filter_values(filters, "name_list"))
 
             if export_type == "tasks-export-radio":
                 course = self.app.current_course
@@ -1379,6 +1473,21 @@ class ExportMixin:
                             last_name_to,
                         )
                     ]
+                if name_list_filter:
+                    entries = [
+                        e for e in entries if name_matches_list(e.student_name, name_list_filter)
+                    ]
+                    student_names = list({e.student_name for e in entries})
+                    matched, unmatched = check_name_list_matches(
+                        student_names, list(name_list_filter)
+                    )
+                    total_names = len(matched) + len(unmatched)
+                    match_msg = f"{len(matched)}/{total_names} names matched"
+                    if unmatched:
+                        match_msg += f"; unmatched: {', '.join(unmatched[:5])}"
+                        if len(unmatched) > 5:
+                            match_msg += f" (+{len(unmatched) - 5} more)"
+                    self.app.call_from_thread(self._set_export_status, match_msg, "info")
 
                 filtered_queue = ReviewQueue(
                     course_id=queue.course_id,
@@ -1427,6 +1536,21 @@ class ExportMixin:
                             last_name_to,
                         )
                     ]
+                if name_list_filter:
+                    entries = [
+                        e for e in entries if name_matches_list(e.student_name, name_list_filter)
+                    ]
+                    student_names = list({e.student_name for e in entries})
+                    matched, unmatched = check_name_list_matches(
+                        student_names, list(name_list_filter)
+                    )
+                    total_names = len(matched) + len(unmatched)
+                    match_msg = f"{len(matched)}/{total_names} names matched"
+                    if unmatched:
+                        match_msg += f"; unmatched: {', '.join(unmatched[:5])}"
+                        if len(unmatched) > 5:
+                            match_msg += f" (+{len(unmatched) - 5} more)"
+                    self.app.call_from_thread(self._set_export_status, match_msg, "info")
 
                 accessible_entries = [e for e in entries if e.has_issue_access and e.issue_url]
                 if not accessible_entries:
@@ -1449,6 +1573,7 @@ class ExportMixin:
                 from anytask_scraper.models import Submission as SubmissionModel
 
                 subs: list[SubmissionModel] = []
+                fetch_failures = 0
                 total = len(accessible_entries)
                 for i, entry in enumerate(accessible_entries, 1):
                     self.app.call_from_thread(
@@ -1465,17 +1590,20 @@ class ExportMixin:
                         subs.append(sub)
                     except Exception:
                         logger.debug("Failed to fetch submission", exc_info=True)
+                        fetch_failures += 1
                         continue
 
                 if not subs:
-                    self.app.call_from_thread(
-                        self._set_export_status,
-                        "No submissions could be fetched.",
-                        "error",
+                    msg = (
+                        f"All {fetch_failures} submission(s) failed to fetch."
+                        if fetch_failures > 0
+                        else "No accessible submissions found."
                     )
+                    self.app.call_from_thread(self._set_export_status, msg, "error")
                     return
 
                 total_files = 0
+                total_repos = 0
                 if include_files:
                     self.app.call_from_thread(
                         self._set_export_status,
@@ -1486,10 +1614,25 @@ class ExportMixin:
                         downloaded = download_submission_files(client, sub, output_path)
                         total_files += len(downloaded)
 
-                if fmt == "files":
+                if clone_repos:
+                    from anytask_scraper.storage import clone_submission_repos
+
                     self.app.call_from_thread(
                         self._set_export_status,
-                        f"Downloaded {total_files} files to {output_path}",
+                        f"Cloning repos for {len(subs)} submissions...",
+                        "info",
+                    )
+                    for sub in subs:
+                        cloned = clone_submission_repos(sub, output_path)
+                        total_repos += len(cloned)
+
+                if fmt == "files":
+                    status = f"Downloaded {total_files} files to {output_path}"
+                    if total_repos:
+                        status += f" ({total_repos} repos cloned)"
+                    self.app.call_from_thread(
+                        self._set_export_status,
+                        status,
                         "success",
                     )
                     return
@@ -1522,6 +1665,10 @@ class ExportMixin:
                 status = f"Saved: {saved_label}"
                 if include_files:
                     status += f" ({total_files} files downloaded)"
+                if clone_repos and total_repos:
+                    status += f" ({total_repos} repos cloned)"
+                if fetch_failures > 0:
+                    status += f" ({fetch_failures} failed)"
                 self.app.call_from_thread(
                     self._set_export_status,
                     status,
@@ -1556,6 +1703,21 @@ class ExportMixin:
                             last_name_to,
                         )
                     ]
+                if name_list_filter:
+                    entries = [
+                        e for e in entries if name_matches_list(e.student_name, name_list_filter)
+                    ]
+                    student_names = list({e.student_name for e in entries})
+                    matched, unmatched = check_name_list_matches(
+                        student_names, list(name_list_filter)
+                    )
+                    total_names = len(matched) + len(unmatched)
+                    match_msg = f"{len(matched)}/{total_names} names matched"
+                    if unmatched:
+                        match_msg += f"; unmatched: {', '.join(unmatched[:5])}"
+                        if len(unmatched) > 5:
+                            match_msg += f" (+{len(unmatched) - 5} more)"
+                    self.app.call_from_thread(self._set_export_status, match_msg, "info")
                 allowed_issue_urls = {e.issue_url for e in entries if e.issue_url}
                 submissions = {
                     issue_url: sub
@@ -1591,7 +1753,7 @@ class ExportMixin:
                     groups = [g for g in groups if g.group_name in group_filters]
                 if teacher_filters:
                     groups = [g for g in groups if g.teacher_name in teacher_filters]
-                if last_name_from or last_name_to:
+                if last_name_from or last_name_to or name_list_filter:
                     groups = [
                         GradebookGroup(
                             group_name=g.group_name,
@@ -1603,11 +1765,27 @@ class ExportMixin:
                                 e
                                 for e in g.entries
                                 if last_name_in_range(e.student_name, last_name_from, last_name_to)
+                                and (
+                                    not name_list_filter
+                                    or name_matches_list(e.student_name, name_list_filter)
+                                )
                             ],
                         )
                         for g in groups
                     ]
                     groups = [g for g in groups if g.entries]
+                if name_list_filter:
+                    student_names = list({e.student_name for g in groups for e in g.entries})
+                    matched, unmatched = check_name_list_matches(
+                        student_names, list(name_list_filter)
+                    )
+                    total_names = len(matched) + len(unmatched)
+                    match_msg = f"{len(matched)}/{total_names} names matched"
+                    if unmatched:
+                        match_msg += f"; unmatched: {', '.join(unmatched[:5])}"
+                        if len(unmatched) > 5:
+                            match_msg += f" (+{len(unmatched) - 5} more)"
+                    self.app.call_from_thread(self._set_export_status, match_msg, "info")
 
                 filtered_gradebook = Gradebook(
                     course_id=gradebook.course_id,

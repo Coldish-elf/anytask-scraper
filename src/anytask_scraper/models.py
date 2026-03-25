@@ -15,10 +15,49 @@ def last_name_in_range(name: str, from_name: str = "", to_name: str = "") -> boo
     return not (to_name and ln > to_name.casefold() + "\uffff")
 
 
+def parse_name_list(text: str) -> list[str]:
+    seen: set[str] = set()
+    result: list[str] = []
+    for line in text.splitlines():
+        name = line.strip()
+        if name and name not in seen:
+            seen.add(name)
+            result.append(name)
+    return result
+
+
+def _name_prefix_match(name_cf: str, entry_cf: str) -> bool:
+    if not name_cf.startswith(entry_cf):
+        return False
+    return len(name_cf) == len(entry_cf) or name_cf[len(entry_cf)] == " "
+
+
+def name_matches_list(name: str, name_list: list[str]) -> bool:
+    if not name_list:
+        return True
+    cf = name.casefold()
+    return any(_name_prefix_match(cf, entry.casefold()) for entry in name_list)
+
+
+def check_name_list_matches(
+    student_names: list[str],
+    name_list: list[str],
+) -> tuple[list[str], list[str]]:
+    if not name_list:
+        return [], []
+    matched: list[str] = []
+    unmatched: list[str] = []
+    for entry in name_list:
+        entry_cf = entry.casefold()
+        if any(_name_prefix_match(sn.casefold(), entry_cf) for sn in student_names):
+            matched.append(entry)
+        else:
+            unmatched.append(entry)
+    return matched, unmatched
+
+
 @dataclass
 class Task:
-    """Course task."""
-
     task_id: int
     title: str
     description: str = ""
@@ -33,8 +72,6 @@ class Task:
 
 @dataclass
 class Course:
-    """Course with tasks."""
-
     course_id: int
     title: str = ""
     teachers: list[str] = field(default_factory=list)
@@ -43,8 +80,6 @@ class Course:
 
 @dataclass
 class ProfileCourseEntry:
-    """Course entry from user profile."""
-
     course_id: int
     title: str
     role: str
@@ -52,8 +87,6 @@ class ProfileCourseEntry:
 
 @dataclass
 class QueueEntry:
-    """One queue row."""
-
     student_name: str
     student_url: str
     task_title: str
@@ -69,8 +102,6 @@ class QueueEntry:
 
 @dataclass
 class FileAttachment:
-    """Comment attachment."""
-
     filename: str
     download_url: str
     is_notebook: bool = False
@@ -78,8 +109,6 @@ class FileAttachment:
 
 @dataclass
 class Comment:
-    """Submission comment."""
-
     author_name: str
     author_url: str
     timestamp: datetime | None
@@ -92,8 +121,6 @@ class Comment:
 
 @dataclass
 class Submission:
-    """Submission details."""
-
     issue_id: int
     task_title: str
     student_name: str = ""
@@ -110,8 +137,6 @@ class Submission:
 
 @dataclass
 class QueueFilters:
-    """Queue filter options."""
-
     students: list[tuple[str, str]] = field(default_factory=list)
     tasks: list[tuple[str, str]] = field(default_factory=list)
     reviewers: list[tuple[str, str]] = field(default_factory=list)
@@ -120,8 +145,6 @@ class QueueFilters:
 
 @dataclass
 class ReviewQueue:
-    """Queue payload."""
-
     course_id: int
     entries: list[QueueEntry] = field(default_factory=list)
     submissions: dict[str, Submission] = field(default_factory=dict)
@@ -129,8 +152,6 @@ class ReviewQueue:
 
 @dataclass
 class GradebookEntry:
-    """One student row in the gradebook."""
-
     student_name: str
     student_url: str
     scores: dict[str, float] = field(default_factory=dict)
@@ -141,8 +162,6 @@ class GradebookEntry:
 
 @dataclass
 class GradebookGroup:
-    """One group within the gradebook."""
-
     group_name: str
     group_id: int
     teacher_name: str = ""
@@ -153,16 +172,12 @@ class GradebookGroup:
 
 @dataclass
 class Gradebook:
-    """Gradebook for a course."""
-
     course_id: int
     groups: list[GradebookGroup] = field(default_factory=list)
 
 
 @dataclass
 class SubmissionForms:
-    """Metadata extracted from a submission page's write forms."""
-
     csrf_token: str = ""
     max_score: float | None = None
     current_status: int = 0
@@ -176,8 +191,6 @@ class SubmissionForms:
 
 @dataclass
 class WriteResult:
-    """Result of a write operation (grade, status, or comment)."""
-
     success: bool
     action: str
     issue_id: int
@@ -194,8 +207,8 @@ def filter_gradebook(
     min_score: float | None = None,
     last_name_from: str = "",
     last_name_to: str = "",
+    name_list: list[str] | None = None,
 ) -> Gradebook:
-    """Return a filtered copy of gradebook by group, teacher, student, score, and name range."""
     filtered_groups: list[GradebookGroup] = []
     for g in gradebook.groups:
         if group and group.lower() not in g.group_name.lower():
@@ -215,8 +228,12 @@ def filter_gradebook(
                 for e in entries
                 if last_name_in_range(e.student_name, last_name_from, last_name_to)
             ]
+        if name_list:
+            entries = [e for e in entries if name_matches_list(e.student_name, name_list)]
 
-        has_entry_filters = bool(student or min_score is not None or last_name_from or last_name_to)
+        has_entry_filters = bool(
+            student or min_score is not None or last_name_from or last_name_to or name_list
+        )
         if entries or not has_entry_filters:
             filtered_groups.append(
                 GradebookGroup(

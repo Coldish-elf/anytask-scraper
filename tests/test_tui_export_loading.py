@@ -479,6 +479,7 @@ def test_handle_export_passes_columns_and_filename() -> None:
         _get_included_columns=lambda: ["Student", "Task"],
         _get_custom_export_filename=lambda: "my_queue",
         _get_include_submission_files=lambda: False,
+        _get_clone_repos=lambda: False,
         _set_export_status=lambda _msg, _kind="info": None,
         _do_export=lambda *args: captured.append(args),
     )
@@ -486,13 +487,14 @@ def test_handle_export_passes_columns_and_filename() -> None:
     main_mod.MainScreen._handle_export(screen)
 
     assert len(captured) == 1
-    fmt, output_path, export_type, filters, columns, filename, include_files = captured[0]
+    fmt, output_path, export_type, filters, columns, filename, include_files, clone_repos = captured[0]
     assert fmt == "csv"
     assert export_type == "subs-export-radio"
     assert filters == {"task": "Task 1"}
     assert columns == ["Student", "Task"]
     assert filename == "my_queue"
     assert include_files is False
+    assert clone_repos is False
     assert str(output_path).endswith("/output")
 
 

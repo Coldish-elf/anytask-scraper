@@ -48,7 +48,7 @@ err_console = Console(stderr=True)
 DEFAULT_SETTINGS_FILE = ".anytask_scraper_settings.json"
 INIT_DEFAULTS: dict[str, Any] = {
     "credentials_file": "./credentials.json",
-    "session_file": "./.anytask_session.json",
+    "session_file": str(Path.home() / ".config" / "anytask-scraper" / "session.json"),
     "status_mode": "errors",
     "default_output": "./output",
     "save_session": True,
@@ -67,6 +67,22 @@ SETTINGS_KEYS = (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _resolve_name_list(args: argparse.Namespace) -> list[str]:
+    from anytask_scraper.models import parse_name_list
+
+    parts: list[str] = []
+    names_file = getattr(args, "names_file", "")
+    if names_file:
+        try:
+            parts.append(Path(names_file).expanduser().read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError) as e:
+            err_console.print(f"[yellow]Warning: cannot read names file: {e}[/yellow]")
+    names_inline = getattr(args, "names", None) or []
+    if names_inline:
+        parts.append("\n".join(names_inline))
+    return parse_name_list("\n".join(parts))
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -212,6 +228,11 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Download files from submissions (implies --deep)",
     )
+    queue_p.add_argument(
+        "--clone-repos",
+        action="store_true",
+        help="Clone GitHub repos from submission links (implies --deep)",
+    )
     queue_p.add_argument("--filter-task", help="Filter by task title (substring match)")
     queue_p.add_argument("--filter-reviewer", help="Filter by reviewer name (substring match)")
     queue_p.add_argument("--filter-status", help="Filter by status name (substring match)")
@@ -224,6 +245,18 @@ def _build_parser() -> argparse.ArgumentParser:
         "--last-name-to",
         default="",
         help="Keep only students whose last name <= this value (prefix-inclusive)",
+    )
+    queue_p.add_argument(
+        "--names-file",
+        default="",
+        help="Path to file with student names to include (one per line, prefix match)",
+    )
+    queue_p.add_argument(
+        "--names",
+        nargs="+",
+        default=None,
+        metavar="NAME",
+        help='Student names to include (prefix match, e.g. "Иванов Иван")',
     )
     queue_p.add_argument(
         "--include-columns",
@@ -293,6 +326,18 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Keep only students whose last name <= this value (prefix-inclusive)",
     )
     gradebook_p.add_argument(
+        "--names-file",
+        default="",
+        help="Path to file with student names to include (one per line, prefix match)",
+    )
+    gradebook_p.add_argument(
+        "--names",
+        nargs="+",
+        default=None,
+        metavar="NAME",
+        help='Student names to include (prefix match, e.g. "Иванов Иван")',
+    )
+    gradebook_p.add_argument(
         "--include-columns",
         nargs="+",
         default=None,
@@ -343,6 +388,18 @@ def _build_parser() -> argparse.ArgumentParser:
         "--last-name-to",
         default="",
         help="Keep only students whose last name <= this value",
+    )
+    db_sync_p.add_argument(
+        "--names-file",
+        default="",
+        help="Path to file with student names to include (one per line, prefix match)",
+    )
+    db_sync_p.add_argument(
+        "--names",
+        nargs="+",
+        default=None,
+        metavar="NAME",
+        help='Student names to include (prefix match, e.g. "Иванов Иван")',
     )
     db_sync_p.add_argument(
         "--pull",
@@ -436,6 +493,18 @@ def _build_parser() -> argparse.ArgumentParser:
         "--last-name-to",
         default="",
         help="Only pull students with last name <= this value",
+    )
+    db_pull_p.add_argument(
+        "--names-file",
+        default="",
+        help="Path to file with student names to include (one per line, prefix match)",
+    )
+    db_pull_p.add_argument(
+        "--names",
+        nargs="+",
+        default=None,
+        metavar="NAME",
+        help='Student names to include (prefix match, e.g. "Иванов Иван")',
     )
     db_pull_p.add_argument(
         "--issue-id",
@@ -645,7 +714,6 @@ def _save_settings(path: str, settings: dict[str, Any]) -> None:
 
 
 def _ensure_credentials_stub(path: str) -> bool:
-    """Create credentials file stub if it doesn't exist."""
     file_path = Path(path)
     if file_path.exists():
         return False
@@ -661,12 +729,9 @@ def _merge_runtime_settings(args: argparse.Namespace, settings: dict[str, Any]) 
         if current is None and key in settings:
             setattr(args, key, settings[key])
 
-    if args.status_mode is None:
-        args.status_mode = "all"
-    if args.save_session is None:
-        args.save_session = True
-    if args.refresh_session is None:
-        args.refresh_session = False
+    for key, default in INIT_DEFAULTS.items():
+        if getattr(args, key, None) is None:
+            setattr(args, key, default)
 
 
 def _resolve_credentials(
@@ -863,7 +928,6 @@ def _run_course(args: argparse.Namespace, client: AnytaskClient) -> None:
 
 
 def _parse_ajax_entry(row: dict[str, object]) -> QueueEntry:
-    """Convert AJAX row to ``QueueEntry``."""
     from anytask_scraper._queue_helpers import parse_ajax_entry
 
     return parse_ajax_entry(row)
@@ -877,6 +941,7 @@ def _filter_queue_entries(
     filter_status: str = "",
     last_name_from: str = "",
     last_name_to: str = "",
+    name_list: list[str] | None = None,
 ) -> list[QueueEntry]:
     from anytask_scraper._queue_helpers import filter_queue_entries
 
@@ -887,6 +952,7 @@ def _filter_queue_entries(
         filter_status=filter_status,
         last_name_from=last_name_from,
         last_name_to=last_name_to,
+        name_list=name_list,
     )
 
 
@@ -899,6 +965,7 @@ def _fetch_review_queue(
     filter_status: str = "",
     last_name_from: str = "",
     last_name_to: str = "",
+    name_list: list[str] | None = None,
     deep: bool = False,
 ) -> tuple[ReviewQueue, int]:
     with console.status("[bold blue]Fetching queue page..."):
@@ -919,6 +986,7 @@ def _fetch_review_queue(
         filter_status=filter_status,
         last_name_from=last_name_from,
         last_name_to=last_name_to,
+        name_list=name_list,
     )
 
     queue = ReviewQueue(course_id=course_id, entries=entries)
@@ -947,6 +1015,10 @@ def _run_queue(args: argparse.Namespace, client: AnytaskClient) -> None:
 
     if args.download_files:
         args.deep = True
+    if args.clone_repos:
+        args.deep = True
+
+    name_list = _resolve_name_list(args)
 
     queue, raw_total = _fetch_review_queue(
         client,
@@ -956,6 +1028,7 @@ def _run_queue(args: argparse.Namespace, client: AnytaskClient) -> None:
         filter_status=args.filter_status or "",
         last_name_from=args.last_name_from,
         last_name_to=args.last_name_to,
+        name_list=name_list or None,
         deep=args.deep,
     )
     entries = queue.entries
@@ -965,6 +1038,15 @@ def _run_queue(args: argparse.Namespace, client: AnytaskClient) -> None:
         f"Queue: {len(entries)} entries"
         + (f" (filtered from {raw_total})" if len(entries) != raw_total else ""),
     )
+    if name_list:
+        from anytask_scraper.models import check_name_list_matches
+
+        student_names = [e.student_name for e in entries]
+        matched, unmatched = check_name_list_matches(student_names, name_list)
+        total_names = len(matched) + len(unmatched)
+        _print_ok(args, f"Name list: {len(matched)}/{total_names} matched")
+        if unmatched:
+            err_console.print(f"[yellow]Unmatched names: {', '.join(unmatched)}[/yellow]")
     if args.deep:
         _print_ok(args, f"Fetched {len(queue.submissions)} submissions")
 
@@ -975,6 +1057,19 @@ def _run_queue(args: argparse.Namespace, client: AnytaskClient) -> None:
                 downloaded = download_submission_files(client, sub, output_dir)
                 total += len(downloaded)
         _print_ok(args, f"Downloaded {total} files -> {output_dir}")
+
+    if args.clone_repos and queue.submissions:
+        from anytask_scraper.storage import clone_submission_repos
+
+        total_repos = 0
+        with console.status("[bold blue]Cloning repos..."):
+            for sub in queue.submissions.values():
+                cloned = clone_submission_repos(sub, output_dir)
+                total_repos += len(cloned)
+        if total_repos:
+            _print_ok(args, f"Cloned {total_repos} repo(s) -> {output_dir}")
+        else:
+            _print_ok(args, "No GitHub repos found in submission links")
 
     if args.format == "table":
         display_queue(queue, console)
@@ -1037,7 +1132,7 @@ def _print_pulled_entries(entries: list[dict[str, Any]], output_format: str) -> 
 
 
 def _run_db_sync_once(args: argparse.Namespace, client: AnytaskClient) -> None:
-    """Execute a single sync cycle."""
+    name_list = _resolve_name_list(args)
     queue, raw_total = _fetch_review_queue(
         client,
         course_id=args.course,
@@ -1046,6 +1141,7 @@ def _run_db_sync_once(args: argparse.Namespace, client: AnytaskClient) -> None:
         filter_status=args.filter_status,
         last_name_from=args.last_name_from,
         last_name_to=args.last_name_to,
+        name_list=name_list or None,
         deep=args.deep,
     )
 
@@ -1106,6 +1202,7 @@ def _run_db_sync(args: argparse.Namespace, client: AnytaskClient) -> None:
 
 
 def _run_db_pull(args: argparse.Namespace) -> None:
+    name_list = _resolve_name_list(args)
     db = QueueJsonDB(args.db_file)
     pulled = db.pull_new_entries(
         course_id=args.course,
@@ -1117,6 +1214,7 @@ def _run_db_pull(args: argparse.Namespace) -> None:
         last_name_from=args.last_name_from,
         last_name_to=args.last_name_to,
         issue_id=args.issue_id,
+        name_list=name_list or None,
     )
     console.print(f"[green][OK][/green] Pulled {len(pulled)} new entries from {args.db_file}")
     _print_pulled_entries(pulled, args.format)
@@ -1248,6 +1346,7 @@ def _run_gradebook(args: argparse.Namespace, client: AnytaskClient) -> None:
 
     course_id = args.course
     output_dir = _resolve_output_dir(args)
+    name_list = _resolve_name_list(args)
 
     with console.status(f"[bold blue]Fetching gradebook for course {course_id}..."):
         html = client.fetch_gradebook_page(course_id)
@@ -1261,6 +1360,7 @@ def _run_gradebook(args: argparse.Namespace, client: AnytaskClient) -> None:
         min_score=args.min_score,
         last_name_from=args.last_name_from,
         last_name_to=args.last_name_to,
+        name_list=name_list or None,
     )
 
     total_entries = sum(len(g.entries) for g in gradebook.groups)
@@ -1268,6 +1368,15 @@ def _run_gradebook(args: argparse.Namespace, client: AnytaskClient) -> None:
         args,
         f"Gradebook: {len(gradebook.groups)} group(s), {total_entries} students",
     )
+    if name_list:
+        from anytask_scraper.models import check_name_list_matches
+
+        all_student_names = [e.student_name for g in gradebook.groups for e in g.entries]
+        matched, unmatched = check_name_list_matches(all_student_names, name_list)
+        total_names = len(matched) + len(unmatched)
+        _print_ok(args, f"Name list: {len(matched)}/{total_names} matched")
+        if unmatched:
+            err_console.print(f"[yellow]Unmatched names: {', '.join(unmatched)}[/yellow]")
 
     if args.format == "table":
         display_gradebook(gradebook, console)
@@ -1330,7 +1439,6 @@ _STATUS_NAMES: dict[str, int] = {
 
 
 def _resolve_status(value: str) -> int:
-    """Resolve human-readable status name or integer to status code."""
     if value in _STATUS_NAMES:
         return _STATUS_NAMES[value]
     try:
@@ -1442,8 +1550,16 @@ def main(argv: list[str] | None = None) -> None:
             if args.session_file and not args.refresh_session:
                 with console.status("[bold blue]Loading saved session..."):
                     session_loaded = client.load_session(args.session_file)
+
                 if session_loaded:
                     _print_ok(args, f"Loaded session from {args.session_file}")
+                else:
+                    old_session = Path(".anytask_session.json")
+                    if old_session.exists():
+                        session_loaded = client.load_session(str(old_session))
+                        if session_loaded:
+                            client.save_session(args.session_file)
+                            _print_ok(args, f"Migrated session to {args.session_file}")
 
             if not session_loaded:
                 with console.status("[bold blue]Logging in..."):

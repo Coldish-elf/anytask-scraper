@@ -23,8 +23,6 @@ if TYPE_CHECKING:
 
 
 class GradeInputScreen(ModalScreen[float | None]):
-    """Modal for entering a grade."""
-
     def __init__(self, max_score: float | None = None) -> None:
         super().__init__()
         self.max_score = max_score
@@ -57,8 +55,6 @@ class GradeInputScreen(ModalScreen[float | None]):
 
 
 class StatusSelectScreen(ModalScreen[int | None]):
-    """Modal for selecting a status."""
-
     STATUS_OPTIONS = [(3, "На проверке"), (4, "На доработке"), (5, "Зачтено")]
 
     def compose(self) -> ComposeResult:
@@ -89,8 +85,6 @@ class StatusSelectScreen(ModalScreen[int | None]):
 
 
 class CommentInputScreen(ModalScreen[str | None]):
-    """Modal for entering a comment."""
-
     def compose(self) -> ComposeResult:
         with Vertical(id="comment-modal"):
             yield Label("Enter comment:")
@@ -119,8 +113,6 @@ class CommentInputScreen(ModalScreen[str | None]):
 
 
 class AcceptAndRateScreen(ModalScreen[tuple[float, str] | None]):
-    """Combined modal: grade + optional comment, auto-sets status=Accepted."""
-
     def __init__(self, max_score: float | None = None) -> None:
         super().__init__()
         self.max_score = max_score
@@ -159,8 +151,6 @@ class AcceptAndRateScreen(ModalScreen[tuple[float, str] | None]):
 
 
 class SubmissionScreen(Screen[None]):
-    """Full-screen view for a single submission with all comments."""
-
     app: AnytaskApp
 
     BINDINGS = [
@@ -381,13 +371,11 @@ class SubmissionScreen(Screen[None]):
         self.query_one("#sub-scroll", VerticalScroll).scroll_up()
 
     def _rebuild_ui(self) -> None:
-        """Replace the current screen with a fresh SubmissionScreen for the updated submission."""
         new_screen = SubmissionScreen(self.submission, teacher_mode=self.teacher_mode)
         self.app.switch_screen(new_screen)
 
     @work(thread=True)
     def _refresh_submission(self) -> None:
-        """Re-fetch and re-parse the submission page, then rebuild the UI."""
         client = self.app.client
         if client is None:
             return
@@ -464,7 +452,6 @@ class SubmissionScreen(Screen[None]):
 
     @work(thread=True)
     def _submit_accept_and_rate(self, grade: float, comment: str) -> None:
-        """Set grade + status=Accepted + optional comment in sequence."""
         client = self.app.client
         if client is None:
             return

@@ -1,5 +1,3 @@
-"""JSON-backed queue database with strict hierarchy."""
-
 from __future__ import annotations
 
 import hashlib
@@ -11,7 +9,14 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from anytask_scraper.models import Comment, QueueEntry, ReviewQueue, Submission, last_name_in_range
+from anytask_scraper.models import (
+    Comment,
+    QueueEntry,
+    ReviewQueue,
+    Submission,
+    last_name_in_range,
+    name_matches_list,
+)
 from anytask_scraper.parser import strip_html
 
 SCHEMA_VERSION = 1
@@ -46,13 +51,6 @@ def _issue_id_from_url(issue_url: str) -> int:
 
 
 class QueueJsonDB:
-    """Queue-oriented JSON DB with deterministic hierarchy.
-
-    Top-level layout:
-    ``courses -> students -> assignments -> files``
-    plus ``issue_chain`` event log per assignment.
-    """
-
     def __init__(self, path: Path | str, *, autosave: bool = True) -> None:
         self.path = Path(path)
         self.autosave = autosave
@@ -90,7 +88,6 @@ class QueueJsonDB:
         return raw_obj
 
     def save(self) -> None:
-        """Persist DB to disk atomically via write-to-temp + rename."""
         self.path.parent.mkdir(parents=True, exist_ok=True)
         tmp_path = self.path.with_suffix(self.path.suffix + ".tmp")
         tmp_path.write_text(
@@ -100,11 +97,9 @@ class QueueJsonDB:
         tmp_path.replace(self.path)
 
     def snapshot(self) -> dict[str, Any]:
-        """Return deep copy of DB payload."""
         return deepcopy(self._data)
 
     def sync_queue(self, queue: ReviewQueue, *, course_title: str = "") -> int:
-        """Ingest queue snapshot and return count of newly flagged assignments."""
         now = _now_iso()
         course = self._ensure_course(queue.course_id, course_title, now)
 
@@ -144,8 +139,8 @@ class QueueJsonDB:
         last_name_from: str = "",
         last_name_to: str = "",
         issue_id: int | None = None,
+        name_list: list[str] | None = None,
     ) -> list[dict[str, Any]]:
-        """Pull and mark queue entries with ``queue_state == 'new'``."""
         pulled_at = _now_iso()
         pulled: list[dict[str, Any]] = []
         student_contains_cf = student_contains.strip().casefold()
@@ -197,6 +192,8 @@ class QueueJsonDB:
                         last_name_to.strip(),
                     ):
                         continue
+                    if name_list and not name_matches_list(student_name, name_list):
+                        continue
 
                     assignment["queue_state"] = "pulled"
                     assignment["pulled_at"] = pulled_at
@@ -229,7 +226,6 @@ class QueueJsonDB:
         return pulled
 
     def get_all_entries(self, *, course_id: int | None = None) -> list[dict[str, Any]]:
-        """Return every assignment in the DB as a flat list (all states)."""
         entries: list[dict[str, Any]] = []
         for cid, course in self._iter_courses(course_id):
             students = course.get("students", {})
@@ -254,12 +250,14 @@ class QueueJsonDB:
                             "task_title": assignment.get("task_title", ""),
                             "issue_id": assignment.get("issue_id", 0),
                             "issue_url": assignment.get("issue_url", ""),
-                            "status": queue.get("status", "") if isinstance(queue, dict) else "",
-                            "grade": queue.get("grade", "") if isinstance(queue, dict) else "",
+                            "status": (queue.get("status", "") if isinstance(queue, dict) else ""),
+                            "grade": (queue.get("grade", "") if isinstance(queue, dict) else ""),
                             "reviewer": (
                                 queue.get("reviewer", "") if isinstance(queue, dict) else ""
                             ),
-                            "updated": queue.get("updated", "") if isinstance(queue, dict) else "",
+                            "updated": (
+                                queue.get("updated", "") if isinstance(queue, dict) else ""
+                            ),
                             "queue_state": assignment.get("queue_state", "new"),
                         }
                     )
@@ -272,7 +270,6 @@ class QueueJsonDB:
         student_key: str,
         assignment_key: str,
     ) -> bool:
-        """Mark a single 'new' entry as 'pulled'."""
         courses = self._data.get("courses", {})
         if not isinstance(courses, dict):
             return False
@@ -307,7 +304,6 @@ class QueueJsonDB:
         student_key: str,
         assignment_key: str,
     ) -> bool:
-        """Mark a pulled assignment as processed."""
         courses = self._data.get("courses", {})
         if not isinstance(courses, dict):
             return False
@@ -345,7 +341,6 @@ class QueueJsonDB:
         author: str = "",
         note: str = "",
     ) -> bool:
-        """Append a write action (e.g. grade/status change) to assignment issue_chain."""
         located = self._find_assignment_by_issue_id(course_id, issue_id)
         if located is None:
             return False
@@ -382,7 +377,6 @@ class QueueJsonDB:
         student_key: str,
         assignment_key: str,
     ) -> list[dict[str, str]]:
-        """Return field-level diff between the last two queue_snapshot events."""
         courses = self._data.get("courses", {})
         if not isinstance(courses, dict):
             return []
@@ -419,7 +413,6 @@ class QueueJsonDB:
         *,
         course_id: int | None = None,
     ) -> list[dict[str, Any]]:
-        """Return entries with field changes between the last two queue_snapshot events."""
         changed: list[dict[str, Any]] = []
         for cid, course in self._iter_courses(course_id):
             students = course.get("students", {})
@@ -451,9 +444,9 @@ class QueueJsonDB:
                             "task_title": assignment.get("task_title", ""),
                             "issue_id": assignment.get("issue_id", 0),
                             "diffs": diffs,
-                            "current_status": queue.get("status", "")
-                            if isinstance(queue, dict)
-                            else "",
+                            "current_status": (
+                                queue.get("status", "") if isinstance(queue, dict) else ""
+                            ),
                         }
                     )
         return changed
@@ -463,12 +456,16 @@ class QueueJsonDB:
         *,
         course_id: int | None = None,
     ) -> dict[str, Any]:
-        """Return entry counts by queue_state (total/new/pulled/processed/by_course)."""
         counts: dict[str, int] = {"total": 0, "new": 0, "pulled": 0, "processed": 0}
         by_course: dict[int, dict[str, int]] = {}
 
         for cid, course in self._iter_courses(course_id):
-            course_counts: dict[str, int] = {"total": 0, "new": 0, "pulled": 0, "processed": 0}
+            course_counts: dict[str, int] = {
+                "total": 0,
+                "new": 0,
+                "pulled": 0,
+                "processed": 0,
+            }
             students = course.get("students", {})
             if not isinstance(students, dict):
                 continue

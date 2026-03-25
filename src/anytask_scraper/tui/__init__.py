@@ -2,7 +2,6 @@ from __future__ import annotations
 
 
 def run(debug: bool = False) -> None:
-    """Launch the TUI application."""
     if debug:
         import logging
 

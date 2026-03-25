@@ -225,6 +225,14 @@ class QueueMixin:
                             classes="detail-text",
                         )
                     )
+                if comment.links:
+                    for link in comment.links:
+                        scroll.mount(
+                            Label(
+                                f"[dim]Link: {link}[/dim]",
+                                classes="detail-text",
+                            )
+                        )
 
         scroll.mount(
             Label(

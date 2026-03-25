@@ -52,7 +52,6 @@ class AnytaskClient:
         return "/accounts/login/" in str(resp.url) and "id_username" in resp.text
 
     def login(self) -> None:
-        """Log in with Django form auth."""
         if not self._has_credentials():
             raise LoginError(
                 "No credentials available. Provide username/password or credentials file"
@@ -106,7 +105,6 @@ class AnytaskClient:
         return resp
 
     def load_session(self, session_path: Path | str) -> bool:
-        """Load cookie session from file."""
         path = Path(session_path)
         if not path.exists():
             logger.debug("Session file not found: %s", path)
@@ -142,7 +140,6 @@ class AnytaskClient:
         return True
 
     def save_session(self, session_path: Path | str) -> None:
-        """Save cookie session to file with restrictive permissions."""
         logger.info("Saving session to %s", session_path)
         path = Path(session_path)
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -176,13 +173,11 @@ class AnytaskClient:
             os.close(fd)
 
     def fetch_course_page(self, course_id: int) -> str:
-        """Return course page HTML."""
         logger.debug("Fetching course page for course %d", course_id)
         resp = self._request("GET", f"{BASE_URL}/course/{course_id}")
         return resp.text
 
     def fetch_profile_page(self) -> str:
-        """Return user profile page HTML."""
         logger.debug("Fetching user profile page")
         resp = self._request("GET", f"{BASE_URL}/accounts/profile")
         return resp.text
@@ -212,7 +207,6 @@ class AnytaskClient:
         length: int = 50,
         filter_query: str = "",
     ) -> dict[str, object]:
-        """Return one queue page from AJAX API."""
         data = {
             "csrfmiddlewaretoken": csrf_token,
             "lang": "ru",
@@ -239,7 +233,6 @@ class AnytaskClient:
         csrf_token: str,
         filter_query: str = "",
     ) -> list[dict[str, object]]:
-        """Return all queue rows via pagination."""
         logger.debug("Fetching all queue entries for course %d", course_id)
         all_entries: list[dict[str, object]] = []
         start = 0
@@ -288,7 +281,6 @@ class AnytaskClient:
         *,
         issue_url: str = "",
     ) -> WriteResult:
-        """Set grade on a submission."""
         logger.info("Setting grade %s on issue %d", grade, issue_id)
         try:
             forms = self._fetch_submission_forms(issue_id, issue_url)
@@ -441,7 +433,6 @@ class AnytaskClient:
         *,
         issue_url: str = "",
     ) -> WriteResult:
-        """Add a comment to a submission."""
         logger.info("Adding comment to issue %d", issue_id)
         try:
             forms = self._fetch_submission_forms(issue_id, issue_url)
@@ -531,7 +522,6 @@ class AnytaskClient:
 
     @staticmethod
     def _validate_downloaded_file(path: Path, content_type: str, expected_suffix: str) -> str:
-        """Validate downloaded file. Returns empty string if OK, or reason if invalid."""
         if not path.exists() or path.stat().st_size == 0:
             return "empty_file"
 

@@ -16,14 +16,13 @@ logger = logging.getLogger(__name__)
 
 CONFIG_DIR = Path.home() / ".config" / "anytask-scraper"
 COURSES_FILE = CONFIG_DIR / "courses.json"
-SESSION_FILE = ".anytask_session.json"
+SESSION_FILE = str(CONFIG_DIR / "session.json")
+_OLD_SESSION_FILE = ".anytask_session.json"
 
 _DOUBLE_PRESS_MS = 500
 
 
 class AnytaskApp(App[None]):
-    """Anytask Scraper TUI application."""
-
     TITLE = "Anytask Scraper"
     CSS_PATH = "app.tcss"
 
@@ -49,7 +48,8 @@ class AnytaskApp(App[None]):
             session_path = settings.get("session_file", SESSION_FILE)
             if isinstance(session_path, str):
                 session = Path(session_path)
-                if session.exists():
+                old_session = Path(_OLD_SESSION_FILE)
+                if session.exists() or old_session.exists():
                     self._auto_login(str(session))
                     return
         from anytask_scraper.tui.screens.login import LoginScreen
@@ -66,7 +66,6 @@ class AnytaskApp(App[None]):
             self.client.close()
 
     def action_ctrl_c(self) -> None:
-        """Double Ctrl+C to quit."""
         now = time.monotonic()
         elapsed_ms = (now - self._last_ctrl_c) * 1000
         if elapsed_ms < _DOUBLE_PRESS_MS:
@@ -76,7 +75,6 @@ class AnytaskApp(App[None]):
             self.notify("Press Ctrl+C again to quit", timeout=2)
 
     def save_course_ids(self) -> None:
-        """Persist course IDs to config file."""
         try:
             CONFIG_DIR.mkdir(parents=True, exist_ok=True)
             ids = list(self.courses.keys())
@@ -85,7 +83,6 @@ class AnytaskApp(App[None]):
             logger.debug("Failed to save course IDs", exc_info=True)
 
     def load_course_ids(self) -> list[int]:
-        """Load saved course IDs from config file."""
         try:
             if not COURSES_FILE.exists():
                 return []
@@ -97,33 +94,37 @@ class AnytaskApp(App[None]):
         return []
 
     def remove_course_id(self, course_id: int) -> None:
-        """Remove a course ID from persistence and memory."""
         self.courses.pop(course_id, None)
         self.queue_cache.pop(course_id, None)
         self.gradebook_cache.pop(course_id, None)
         self.save_course_ids()
 
     def _load_settings(self) -> dict[str, object]:
-        """Load settings from .anytask_scraper_settings.json."""
-        settings_path = Path(".anytask_scraper_settings.json")
-        try:
-            if settings_path.exists():
-                data = json.loads(settings_path.read_text(encoding="utf-8"))
-                if isinstance(data, dict):
-                    return data
-        except Exception:
-            logger.debug("Failed to load settings", exc_info=True)
+        for path in (CONFIG_DIR / "settings.json", Path(".anytask_scraper_settings.json")):
+            try:
+                if path.exists():
+                    data = json.loads(path.read_text(encoding="utf-8"))
+                    if isinstance(data, dict):
+                        return data
+            except Exception:
+                logger.debug("Failed to load settings from %s", path, exc_info=True)
         return {}
 
     @work(thread=True)
     def _auto_login(self, session_path: str) -> None:
-        """Auto-login using saved session file."""
         logger.info("Attempting auto-login from %s", session_path)
         try:
             from anytask_scraper.client import AnytaskClient
 
             client = AnytaskClient()
             success = client.load_session(session_path)
+
+            if not success and Path(_OLD_SESSION_FILE).exists():
+                success = client.load_session(_OLD_SESSION_FILE)
+                if success:
+                    logger.info("Migrating session from %s to %s", _OLD_SESSION_FILE, session_path)
+                    client.save_session(session_path)
+
             if success:
                 self.client = client
                 self.session_path = session_path

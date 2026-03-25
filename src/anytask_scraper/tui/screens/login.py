@@ -21,8 +21,6 @@ logger = logging.getLogger(__name__)
 
 
 class LoginScreen(Screen[None]):
-    """Minimal login screen - credentials or saved session."""
-
     app: AnytaskApp
 
     def compose(self) -> ComposeResult:

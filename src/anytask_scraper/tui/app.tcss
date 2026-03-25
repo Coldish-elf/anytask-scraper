@@ -383,6 +383,25 @@ MainScreen {
     height: 1;
 }
 
+#export-names-section TextArea {
+    height: 6;
+    min-height: 4;
+    max-height: 10;
+}
+
+#export-names-file-row {
+    height: 3;
+}
+
+#export-names-file-row Input {
+    width: 1fr;
+}
+
+#export-names-load-btn {
+    width: auto;
+    min-width: 8;
+}
+
 #export-filter-section OptionList {
     width: 100%;
     height: auto;

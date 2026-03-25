@@ -43,7 +43,6 @@ def save_course_json(
     columns: list[str] | None = None,
     filename: str | None = None,
 ) -> Path:
-    """Save course to JSON."""
     path = _resolve_output_path(output_dir, f"course_{course.course_id}.json", filename)
     if columns is None:
         payload: dict[str, Any] = asdict(course)
@@ -86,7 +85,6 @@ def save_course_markdown(
     columns: list[str] | None = None,
     filename: str | None = None,
 ) -> Path:
-    """Save course to Markdown."""
     path = _resolve_output_path(output_dir, f"course_{course.course_id}.md", filename)
 
     lines: list[str] = []
@@ -179,7 +177,6 @@ def save_queue_json(
     columns: list[str] | None = None,
     filename: str | None = None,
 ) -> Path:
-    """Save queue to JSON."""
     path = _resolve_output_path(output_dir, f"queue_{queue.course_id}.json", filename)
     if columns is None:
         payload: dict[str, Any] = asdict(queue)
@@ -215,7 +212,6 @@ def save_queue_markdown(
     columns: list[str] | None = None,
     filename: str | None = None,
 ) -> Path:
-    """Save queue to Markdown."""
     path = _resolve_output_path(output_dir, f"queue_{queue.course_id}.md", filename)
 
     lines: list[str] = []
@@ -290,7 +286,6 @@ def save_course_csv(
     columns: list[str] | None = None,
     filename: str | None = None,
 ) -> Path:
-    """Save course tasks to CSV."""
     path = _resolve_output_path(output_dir, f"course_{course.course_id}.csv", filename)
 
     has_sections = any(t.section for t in course.tasks)
@@ -341,7 +336,6 @@ def save_queue_csv(
     columns: list[str] | None = None,
     filename: str | None = None,
 ) -> Path:
-    """Save queue entries to CSV."""
     path = _resolve_output_path(output_dir, f"queue_{queue.course_id}.csv", filename)
 
     all_columns = ["#", "Student", "Task", "Status", "Reviewer", "Updated", "Grade"]
@@ -375,7 +369,6 @@ def save_submissions_csv(
     columns: list[str] | None = None,
     filename: str | None = None,
 ) -> Path:
-    """Save submissions detail to CSV."""
     path = _resolve_output_path(output_dir, f"submissions_{course_id}.csv", filename)
 
     subs = submissions.values() if isinstance(submissions, dict) else submissions
@@ -424,7 +417,6 @@ def save_submissions_json(
     columns: list[str] | None = None,
     filename: str | None = None,
 ) -> Path:
-    """Save submissions detail to JSON."""
     path = _resolve_output_path(output_dir, f"submissions_{course_id}.json", filename)
     subs = submissions.values() if isinstance(submissions, dict) else submissions
     included = set(columns) if columns is not None else None
@@ -467,7 +459,6 @@ def save_submissions_markdown(
     columns: list[str] | None = None,
     filename: str | None = None,
 ) -> Path:
-    """Save submissions detail to Markdown."""
     path = _resolve_output_path(output_dir, f"submissions_{course_id}.md", filename)
     subs = submissions.values() if isinstance(submissions, dict) else submissions
 
@@ -513,7 +504,6 @@ def download_submission_files(
     submission: Submission,
     base_dir: Path | str,
 ) -> dict[str, Path]:
-    """Download files from submission comments."""
     from anytask_scraper.client import AnytaskClient
 
     assert isinstance(client, AnytaskClient)
@@ -557,13 +547,42 @@ def download_submission_files(
     return downloaded
 
 
+def clone_submission_repos(
+    submission: Submission,
+    base_dir: Path | str,
+    timeout: int = 120,
+) -> dict[str, Path]:
+    from anytask_scraper.github_clone import clone_github_repo, extract_github_links
+
+    base_dir = Path(base_dir)
+    folder_name = (
+        format_student_folder(submission.student_name)
+        if submission.student_name
+        else str(submission.issue_id)
+    )
+    student_dir = base_dir / folder_name
+    student_dir.mkdir(parents=True, exist_ok=True)
+
+    all_links = [link for comment in submission.comments for link in comment.links]
+    repos = extract_github_links(all_links)
+    cloned: dict[str, Path] = {}
+
+    for info in repos:
+        result = clone_github_repo(info, student_dir, timeout=timeout)
+        if result.success:
+            cloned[info.url] = result.path
+        else:
+            logger.debug("Clone failed: %s (%s)", info.url, result.reason)
+
+    return cloned
+
+
 def save_gradebook_json(
     gradebook: Gradebook,
     output_dir: Path | str = ".",
     columns: list[str] | None = None,
     filename: str | None = None,
 ) -> Path:
-    """Save gradebook to JSON."""
     path = _resolve_output_path(output_dir, f"gradebook_{gradebook.course_id}.json", filename)
     if columns is None:
         payload: dict[str, Any] = asdict(gradebook)
@@ -601,7 +620,6 @@ def save_gradebook_markdown(
     columns: list[str] | None = None,
     filename: str | None = None,
 ) -> Path:
-    """Save gradebook to Markdown."""
     path = _resolve_output_path(output_dir, f"gradebook_{gradebook.course_id}.md", filename)
 
     lines: list[str] = []
@@ -660,7 +678,6 @@ def save_gradebook_csv(
     columns: list[str] | None = None,
     filename: str | None = None,
 ) -> Path:
-    """Save gradebook to CSV."""
     path = _resolve_output_path(output_dir, f"gradebook_{gradebook.course_id}.csv", filename)
 
     all_tasks: list[str] = []

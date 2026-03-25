@@ -14,7 +14,6 @@ _CopyFn = Callable[[str], None]
 
 
 def to_plain_text(value: object) -> str:
-    """Convert rich/textual values to plain strings."""
     if isinstance(value, Text):
         return value.plain
     if value is None:
@@ -23,7 +22,6 @@ def to_plain_text(value: object) -> str:
 
 
 def rich_markup_to_plain(text: str) -> str:
-    """Strip Rich markup tags from text when present."""
     if "[" not in text:
         return text
     if "[/" not in text and "[bold" not in text and "[dim" not in text:
@@ -35,12 +33,10 @@ def rich_markup_to_plain(text: str) -> str:
 
 
 def format_course_for_clipboard(course_id: int, title: str) -> str:
-    """Format a course summary."""
     return f"Course ID: {course_id}\nTitle: {title}"
 
 
 def format_task_for_clipboard(task: Task, *, teacher_view: bool) -> str:
-    """Format task details for clipboard."""
     lines = [f"Task: {task.title}"]
     if teacher_view:
         lines.append(f"Section: {task.section or '-'}")
@@ -67,7 +63,6 @@ def format_task_for_clipboard(task: Task, *, teacher_view: bool) -> str:
 
 
 def format_queue_entry_for_clipboard(entry: QueueEntry) -> str:
-    """Format queue entry details for clipboard."""
     lines = [
         f"Student: {entry.student_name}",
         f"Task: {entry.task_title}",
@@ -82,7 +77,6 @@ def format_queue_entry_for_clipboard(entry: QueueEntry) -> str:
 
 
 def format_submission_for_clipboard(submission: Submission) -> str:
-    """Format full submission details for clipboard."""
     lines = [
         f"Issue ID: {submission.issue_id}",
         f"Task: {submission.task_title}",
@@ -116,7 +110,6 @@ def format_submission_for_clipboard(submission: Submission) -> str:
 
 
 def format_table_row_for_clipboard(headers: list[str], values: list[object]) -> str:
-    """Format a table row as key-value lines."""
     pairs: list[str] = []
     for index, raw_value in enumerate(values):
         if index >= len(headers):
@@ -129,7 +122,6 @@ def format_table_row_for_clipboard(headers: list[str], values: list[object]) -> 
 
 
 def normalize_table_header(label: object) -> str:
-    """Normalize headers by stripping sort arrows and padding."""
     text = to_plain_text(label).strip()
     if text.endswith("▲") or text.endswith("▼"):
         text = text[:-1].rstrip()
@@ -137,11 +129,6 @@ def normalize_table_header(label: object) -> str:
 
 
 def copy_text_to_clipboard(text: str, *, app: object | None = None) -> tuple[bool, str]:
-    """Copy text to clipboard with native command fallbacks across platforms.
-
-    Returns:
-        (success, method_name)
-    """
     for method_name, copy_fn in _iter_clipboard_methods(app):
         try:
             copy_fn(text)

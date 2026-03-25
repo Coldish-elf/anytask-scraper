@@ -5,8 +5,6 @@ from dataclasses import dataclass
 
 @dataclass
 class ExportParam:
-    """One selectable export parameter (column)."""
-
     name: str
     description: str
     selected: bool = True
@@ -52,7 +50,6 @@ SUBMISSIONS_PARAMS = [
 
 
 def gradebook_params(task_titles: list[str]) -> list[ExportParam]:
-    """Build gradebook parameters with dynamic task columns."""
     params = [
         ExportParam("Group", "Student group"),
         ExportParam("Student", "Last name First name"),

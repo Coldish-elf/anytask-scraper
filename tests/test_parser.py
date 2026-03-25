@@ -1,7 +1,7 @@
 from datetime import datetime
 from pathlib import Path
 
-from anytask_scraper.parser import parse_course_page, strip_html
+from anytask_scraper.parser import format_student_folder, parse_course_page, strip_html
 
 from .html_builders import (
     StudentTask,
@@ -365,3 +365,43 @@ def test_save_course_markdown(tmp_path: Path) -> None:
     content = path.read_text()
     assert course.title in content
     assert "numpy" in content
+
+
+class TestFormatStudentFolder:
+    def test_normal_name(self) -> None:
+        assert format_student_folder("Иванов Иван") == "Иванов_Иван"
+
+    def test_name_with_slash(self) -> None:
+        assert format_student_folder("Иванов / Петров") == "Иванов_Петров"
+
+    def test_name_with_backslash(self) -> None:
+        assert format_student_folder("Иванов \\ Петров") == "Иванов_Петров"
+
+    def test_name_with_quotes(self) -> None:
+        result = format_student_folder('John "Johnny" Doe')
+        assert "/" not in result
+        assert '"' not in result
+        assert result == "John_Johnny_Doe"
+
+    def test_name_with_angle_brackets(self) -> None:
+        result = format_student_folder("user<script>")
+        assert "<" not in result
+        assert ">" not in result
+
+    def test_empty_after_strip(self) -> None:
+        assert format_student_folder("   ") == "unknown"
+
+    def test_only_dots(self) -> None:
+        assert format_student_folder("...") == "unknown"
+
+    def test_preserves_cyrillic(self) -> None:
+        assert format_student_folder("Петров Пётр") == "Петров_Пётр"
+
+    def test_multiple_spaces(self) -> None:
+        result = format_student_folder("John   Doe")
+        assert result == "John_Doe"
+
+    def test_pipe_and_question_mark(self) -> None:
+        result = format_student_folder("test|name?")
+        assert "|" not in result
+        assert "?" not in result

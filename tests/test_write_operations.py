@@ -76,8 +76,6 @@ class TestExtractCsrfFromSubmissionPage:
 
 
 class TestExtractSubmissionFormsHard:
-    """submission_hard.html has all 3 forms (grade, status, comment)."""
-
     def setup_method(self) -> None:
         html = _submission_with_forms(
             has_grade=True,
@@ -122,8 +120,6 @@ class TestExtractSubmissionFormsHard:
 
 
 class TestExtractSubmissionFormsFile:
-    """submission_file.html - check forms are present."""
-
     def setup_method(self) -> None:
         html = build_submission_page(
             issue_id=500001,

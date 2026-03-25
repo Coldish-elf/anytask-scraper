@@ -10,8 +10,6 @@ from textual.widgets.option_list import Option
 
 
 class ActionMenuScreen(ModalScreen[str | None]):
-    """Modal context menu."""
-
     BINDINGS = [
         Binding("escape", "close_menu", "Close", show=False),
     ]

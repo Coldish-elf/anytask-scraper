@@ -4,7 +4,6 @@ from typing import Any
 
 
 def create_app(startup_session_file: str | None = None) -> Any:
-    """Create the FastAPI application."""
     from .server import create_app as _create_app
 
     return _create_app(startup_session_file)
@@ -16,7 +15,6 @@ def run_server(
     session_file: str | None = None,
     reload: bool = False,
 ) -> None:
-    """Start the uvicorn server (used as anytask-api entry point)."""
     try:
         import uvicorn
     except ImportError as exc:

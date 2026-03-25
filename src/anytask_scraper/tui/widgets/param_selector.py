@@ -14,11 +14,7 @@ from anytask_scraper.tui.export_params import ExportParam
 
 
 class ParameterSelector(Vertical):
-    """A toggleable parameter list with names and descriptions."""
-
     class Changed(Message):
-        """Fired when parameter selection changes."""
-
         def __init__(self, included: list[str]) -> None:
             super().__init__()
             self.included = included
@@ -33,7 +29,6 @@ class ParameterSelector(Vertical):
         yield OptionList(id="param-option-list")
 
     def set_params(self, params: list[ExportParam]) -> None:
-        """Replace the parameter list and rebuild the OptionList."""
         self._params = [ExportParam(p.name, p.description, p.selected) for p in params]
         self._rebuild()
 
@@ -48,7 +43,6 @@ class ParameterSelector(Vertical):
             option_list.add_option(Option(label, id=str(i)))
 
     def get_included(self) -> list[str]:
-        """Return names of selected parameters."""
         return [p.name for p in self._params if p.selected]
 
     @on(OptionList.OptionSelected, "#param-option-list")

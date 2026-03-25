@@ -1,10 +1,9 @@
 from __future__ import annotations
 
-from anytask_scraper.models import QueueEntry, last_name_in_range
+from anytask_scraper.models import QueueEntry, last_name_in_range, name_matches_list
 
 
 def parse_ajax_entry(row: dict[str, object]) -> QueueEntry:
-    """Convert AJAX row to QueueEntry"""
     return QueueEntry(
         student_name=str(row.get("student_name", "")),
         student_url=str(row.get("student_url", "")),
@@ -28,8 +27,8 @@ def filter_queue_entries(
     filter_status: str = "",
     last_name_from: str = "",
     last_name_to: str = "",
+    name_list: list[str] | None = None,
 ) -> list[QueueEntry]:
-    """Filter queue entries by various criteria."""
     filtered = entries
     if filter_task:
         needle = filter_task.lower()
@@ -44,4 +43,6 @@ def filter_queue_entries(
         filtered = [
             e for e in filtered if last_name_in_range(e.student_name, last_name_from, last_name_to)
         ]
+    if name_list:
+        filtered = [e for e in filtered if name_matches_list(e.student_name, name_list)]
     return filtered

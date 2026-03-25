@@ -52,7 +52,7 @@ from .state import AppState
 
 logger = logging.getLogger(__name__)
 
-VERSION = "1.0.0"
+VERSION = "1.1.0"
 
 _bearer_scheme = HTTPBearer(auto_error=False)
 _bearer_dependency = Depends(_bearer_scheme)

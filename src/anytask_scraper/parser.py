@@ -30,7 +30,6 @@ _COURSE_URL_RE = re.compile(r"/course/(\d+)")
 
 
 def parse_course_page(html: str, course_id: int) -> Course:
-    """Parse course page into ``Course``."""
     logger.debug("Parsing course page for course %d", course_id)
     soup = BeautifulSoup(html, "lxml")
 
@@ -51,12 +50,6 @@ def parse_course_page(html: str, course_id: int) -> Course:
 
 
 def parse_profile_page(html: str) -> list[ProfileCourseEntry]:
-    """Parse user profile page to discover courses.
-
-    Returns all courses found on the profile, tagged with their role
-    ("teacher" or "student"). If a course appears in both sections,
-    only the "teacher" entry is kept.
-    """
     soup = BeautifulSoup(html, "lxml")
     seen: dict[int, ProfileCourseEntry] = {}
 
@@ -83,7 +76,6 @@ def parse_profile_page(html: str) -> list[ProfileCourseEntry]:
 
 
 def _extract_course_title(soup: BeautifulSoup) -> str:
-    """Extract course title."""
     card_title = soup.find("h5", class_="card-title")
     if card_title is None:
         return ""
@@ -93,7 +85,6 @@ def _extract_course_title(soup: BeautifulSoup) -> str:
 
 
 def _extract_teachers(soup: BeautifulSoup) -> list[str]:
-    """Extract teacher names."""
     teachers_p = soup.find("p", class_="course_teachers")
     if teachers_p is None:
         return []
@@ -101,7 +92,6 @@ def _extract_teachers(soup: BeautifulSoup) -> list[str]:
 
 
 def _parse_deadline(text: str) -> datetime | None:
-    """Parse deadline in ``HH:MM DD-MM-YYYY``."""
     m = _DEADLINE_RE.search(text)
     if m is None:
         return None
@@ -110,7 +100,6 @@ def _parse_deadline(text: str) -> datetime | None:
 
 
 def _parse_student_tasks(tasks_tab: Tag) -> list[Task]:
-    """Parse tasks from student view."""
     tasks: list[Task] = []
     tasks_table = tasks_tab.find("div", id="tasks-table")
     if tasks_table is None:
@@ -166,7 +155,6 @@ def _parse_student_tasks(tasks_tab: Tag) -> list[Task]:
 
 
 def _parse_teacher_tasks(tasks_tab: Tag) -> list[Task]:
-    """Parse tasks from teacher view."""
     tasks: list[Task] = []
     tasks_table = tasks_tab.find("div", id="tasks-table")
     if tasks_table is None:
@@ -212,7 +200,6 @@ def _parse_teacher_tasks(tasks_tab: Tag) -> list[Task]:
 
 
 def _find_group_header(collapse_div: Tag) -> str:
-    """Extract group header near ``collapse_group_*``."""
     prev = collapse_div.find_previous_sibling("div")
     if prev is None:
         return ""
@@ -225,14 +212,12 @@ def _find_group_header(collapse_div: Tag) -> str:
 
 
 def _extract_task_id_from_collapse(tag: Tag) -> int:
-    """Extract task ID from collapse link."""
     href = tag.get("href", "")
     m = _TASK_ID_RE.search(str(href))
     return int(m.group(1)) if m else 0
 
 
 def strip_html(text: str) -> str:
-    """Strip HTML and decode entities."""
     soup = BeautifulSoup(text, "lxml")
     for br in soup.find_all("br"):
         br.replace_with("\n")
@@ -245,7 +230,6 @@ def strip_html(text: str) -> str:
 
 
 def parse_task_edit_page(html: str) -> str:
-    """Extract task description from task edit page."""
     soup = BeautifulSoup(html, "lxml")
     textarea = soup.find("textarea", id="id_task_text")
     if textarea:
@@ -257,7 +241,6 @@ def parse_task_edit_page(html: str) -> str:
 
 
 def _parse_float(text: str) -> float | None:
-    """Parse float or return ``None``."""
     try:
         return float(text)
     except (ValueError, TypeError):
@@ -268,10 +251,10 @@ _CSRF_JS_RE = re.compile(r'csrfmiddlewaretoken["\'\]]\s*[:=]\s*["\']([^"\']+)["\
 _ISSUE_ID_RE = re.compile(r"Issue:\s*(\d+)")
 _COLAB_RE = re.compile(r"https?://colab\.research\.google\.com/drive/([a-zA-Z0-9_-]+)")
 _URL_RE = re.compile(r"https?://[^\s<>\"']+")
+_UNSAFE_FOLDER_RE = re.compile(r'[/\\<>:"|?*\x00-\x1f]')
 
 
 def parse_queue_filters(html: str) -> QueueFilters:
-    """Parse queue filters from modal."""
     soup = BeautifulSoup(html, "lxml")
     modal = soup.find("div", id="modal_filter")
     if modal is None:
@@ -296,13 +279,11 @@ def parse_queue_filters(html: str) -> QueueFilters:
 
 
 def extract_csrf_from_queue_page(html: str) -> str:
-    """Extract queue CSRF token."""
     m = _CSRF_JS_RE.search(html)
     return m.group(1) if m else ""
 
 
 def parse_submission_page(html: str, issue_id: int, issue_url: str = "") -> Submission:
-    """Parse full submission page."""
     logger.debug("Parsing submission page for issue %d", issue_id)
     soup = BeautifulSoup(html, "lxml")
     meta = _parse_submission_metadata(soup)
@@ -325,7 +306,6 @@ def parse_submission_page(html: str, issue_id: int, issue_url: str = "") -> Subm
 
 
 def _parse_submission_metadata(soup: BeautifulSoup) -> dict[str, str]:
-    """Extract submission metadata."""
     result: dict[str, str] = {}
     accordion = soup.find("div", id="accordion2")
     if accordion is None:
@@ -375,7 +355,6 @@ def _parse_submission_metadata(soup: BeautifulSoup) -> dict[str, str]:
 
 
 def _parse_comment_thread(soup: BeautifulSoup) -> list[Comment]:
-    """Parse submission comments."""
     comments: list[Comment] = []
     history = soup.find("ul", class_="history")
     if history is None:
@@ -393,7 +372,6 @@ def _parse_comment_thread(soup: BeautifulSoup) -> list[Comment]:
 
 
 def _parse_single_comment(li: Tag) -> Comment | None:
-    """Parse one comment item."""
     row = li.find("div", class_="row")
     if row is None:
         return None
@@ -465,7 +443,6 @@ _COMMENT_TS_RE = re.compile(r"(\d{1,2})\s+(\S+)\s+(\d{2}):(\d{2})")
 
 
 def _parse_comment_timestamp(text: str) -> datetime | None:
-    """Parse timestamp like ``06 Фев 00:36``."""
     m = _COMMENT_TS_RE.search(text)
     if m is None:
         return None
@@ -481,7 +458,6 @@ def _parse_comment_timestamp(text: str) -> datetime | None:
 
 
 def _parse_comment_files(container: Tag) -> list[FileAttachment]:
-    """Parse comment attachments."""
     files: list[FileAttachment] = []
     files_div = container.find("div", class_="files")
     if files_div is None:
@@ -531,7 +507,6 @@ def _parse_comment_files(container: Tag) -> list[FileAttachment]:
 
 
 def _extract_urls_from_html(html: str) -> list[str]:
-    """Extract links from HTML and text."""
     if not html:
         return []
     urls: list[str] = []
@@ -549,21 +524,22 @@ def _extract_urls_from_html(html: str) -> list[str]:
 
 
 def extract_issue_id_from_breadcrumb(html: str) -> int:
-    """Extract issue ID from breadcrumb."""
     m = _ISSUE_ID_RE.search(html)
     return int(m.group(1)) if m else 0
 
 
 def format_student_folder(name: str) -> str:
-    """Convert student name to folder-safe format."""
-    return name.strip().replace(" ", "_")
+    safe = name.strip().replace(" ", "_")
+    safe = _UNSAFE_FOLDER_RE.sub("_", safe)
+    safe = re.sub(r"_+", "_", safe)
+    safe = safe.strip("_.")
+    return safe or "unknown"
 
 
 _TABLE_ID_RE = re.compile(r"table_results_(\d+)")
 
 
 def parse_gradebook_page(html: str, course_id: int) -> Gradebook:
-    """Parse gradebook page into ``Gradebook``."""
     logger.debug("Parsing gradebook page for course %d", course_id)
     soup = BeautifulSoup(html, "lxml")
     gradebook = Gradebook(course_id=course_id)
@@ -578,7 +554,6 @@ def parse_gradebook_page(html: str, course_id: int) -> Gradebook:
 
 
 def _parse_gradebook_table(table: Tag) -> GradebookGroup | None:
-    """Parse one gradebook table into a ``GradebookGroup``."""
     table_id = str(table.get("id", ""))
     m = _TABLE_ID_RE.search(table_id)
     group_id = int(m.group(1)) if m else 0
@@ -640,7 +615,6 @@ def _parse_gradebook_table(table: Tag) -> GradebookGroup | None:
 
 
 def _parse_gradebook_row(tr: Tag, task_titles: list[str]) -> GradebookEntry | None:
-    """Parse one student row from the gradebook."""
     tds = tr.find_all("td", recursive=False)
     if len(tds) < 3:
         return None
@@ -698,13 +672,11 @@ _CSRF_INPUT_RE = re.compile(
 
 
 def extract_csrf_from_submission_page(html: str) -> str:
-    """Extract CSRF token from a submission page's hidden input."""
     m = _CSRF_INPUT_RE.search(html)
     return m.group(1) if m else ""
 
 
 def extract_submission_forms(html: str) -> SubmissionForms:
-    """Extract write-form metadata from a submission page."""
     soup = BeautifulSoup(html, "lxml")
 
     csrf = extract_csrf_from_submission_page(html)

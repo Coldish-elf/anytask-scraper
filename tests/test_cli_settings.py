@@ -66,13 +66,13 @@ def test_merge_runtime_settings_applies_runtime_fallbacks() -> None:
         default_output = None
         save_session = None
         refresh_session = None
+        auto_login_session = None
 
     args = Args()
     _merge_runtime_settings(args, {})
 
-    assert args.status_mode == "all"
-    assert args.save_session is True
-    assert args.refresh_session is False
+    for key, default in INIT_DEFAULTS.items():
+        assert getattr(args, key) == default, f"{key}: expected {default!r}, got {getattr(args, key)!r}"
 
 
 def test_settings_init_parses() -> None:
@@ -84,7 +84,9 @@ def test_settings_init_parses() -> None:
 
 def test_init_defaults_match_expected_values() -> None:
     assert INIT_DEFAULTS["credentials_file"] == "./credentials.json"
-    assert INIT_DEFAULTS["session_file"] == "./.anytask_session.json"
+    assert INIT_DEFAULTS["session_file"] == str(
+        Path.home() / ".config" / "anytask-scraper" / "session.json"
+    )
     assert INIT_DEFAULTS["status_mode"] == "errors"
     assert INIT_DEFAULTS["default_output"] == "./output"
     assert INIT_DEFAULTS["save_session"] is True

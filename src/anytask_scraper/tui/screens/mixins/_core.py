@@ -35,8 +35,6 @@ logger = logging.getLogger(__name__)
 
 
 class CoreMixin:
-    """Navigation, focus, key bar, status, copy, course management, logout."""
-
     app: AnytaskApp
 
     _help_visible: bool

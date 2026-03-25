@@ -29,7 +29,6 @@ def _make_entry(
 
 
 def _seed_db(path: Path) -> None:
-    """Sync two queues (courses 1250 and 1251) into a DB with 2 entries per course."""
     db = QueueJsonDB(path)
 
     queue_1250 = ReviewQueue(

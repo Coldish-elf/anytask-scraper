@@ -11,14 +11,6 @@ def setup_logging(
     log_file: str | None = None,
     fmt: str = DEFAULT_FORMAT,
 ) -> None:
-    """Configure logging for the anytask_scraper package.
-
-    Args:
-        level: Logging level (e.g. logging.DEBUG, logging.WARNING).
-        log_file: Optional path to a log file. If provided, logs are
-            written to this file in addition to stderr.
-        fmt: Log message format string.
-    """
     root_logger = logging.getLogger("anytask_scraper")
     root_logger.setLevel(level)
 

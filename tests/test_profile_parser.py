@@ -45,7 +45,6 @@ class TestParseProfilePage:
         assert self.by_id[9004].title != ""
 
     def test_student_only_filtering(self) -> None:
-        """Verify the student-only logic (courses in student but not teacher)."""
         teacher_ids = {e.course_id for e in self.entries if e.role == "teacher"}
         student_only = [
             e for e in self.entries if e.role == "student" and e.course_id not in teacher_ids
