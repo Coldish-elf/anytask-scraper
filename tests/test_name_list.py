@@ -229,6 +229,7 @@ class TestFilterQueueEntriesNameList:
         assert result[0].task_title == "Numpy"
         assert result[0].student_name == "Иванов Иван"
 
+
 class TestFilterGradebookNameList:
     def setup_method(self) -> None:
         entries = [
@@ -320,8 +321,4 @@ class TestFilterGradebookNameList:
         result = filter_gradebook(gradebook, name_list=["Иванов"])
 
         assert len(result.groups) == 2
-        assert all(
-            e.student_name.startswith("Иванов")
-            for g in result.groups
-            for e in g.entries
-        )
+        assert all(e.student_name.startswith("Иванов") for g in result.groups for e in g.entries)

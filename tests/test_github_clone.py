@@ -137,6 +137,7 @@ def test_no_github() -> None:
     ]
     assert extract_github_links(links) == []
 
+
 def test_clone_default_branch(tmp_path: Path) -> None:
     info = GitHubRepoInfo(owner="user", repo="myrepo")
     with patch("subprocess.run") as mock_run:

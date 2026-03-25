@@ -100,6 +100,7 @@ def test_save_submissions_json_applies_columns(tmp_path: Path) -> None:
     assert payload["course_id"] == 1250
     assert payload["submissions"][0] == {"issue_id": 7, "task": "Task 1"}
 
+
 def _make_comment(links: list[str]) -> Comment:
     return Comment(
         author_name="Alice",
@@ -129,9 +130,7 @@ class TestCloneSubmissionRepos:
 
         github_url = "https://github.com/octocat/hello-world"
         colab_url = "https://colab.research.google.com/drive/abc123"
-        submission = _make_submission(
-            comments=[_make_comment([github_url, colab_url])]
-        )
+        submission = _make_submission(comments=[_make_comment([github_url, colab_url])])
 
         fake_info = GitHubRepoInfo(owner="octocat", repo="hello-world", url=github_url)
         fake_path = tmp_path / "alice_smith" / "hello-world"
