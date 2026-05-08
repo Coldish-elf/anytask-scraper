@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Container
 from dataclasses import dataclass
-from typing import Any, Container
+from typing import Any
 
 from textual.app import ComposeResult
 from textual.message import Message
