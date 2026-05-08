@@ -30,6 +30,8 @@ class TasksMixin:
 
     _show_status: Any
     _table_cursor_index: Any
+    _table_view_state: Any
+    _restore_table_view: Any
     _push_submission_screen: Any
 
     def _copy_task_payload(self) -> tuple[str, str] | None:
@@ -148,6 +150,7 @@ class TasksMixin:
 
     def _rebuild_task_table(self) -> None:
         table = self.query_one("#task-table", DataTable)  # type: ignore[attr-defined]
+        view_state = self._table_view_state(table)
         if not table.columns:
             self._setup_task_table_columns()
         table.clear()
@@ -173,6 +176,7 @@ class TasksMixin:
                     _styled_deadline(task.deadline),
                     key=str(idx),
                 )
+        self._restore_table_view(table, view_state, len(self.filtered_tasks))
 
     def _clear_detail(self) -> None:
         scroll = self.query_one("#detail-scroll", VerticalScroll)  # type: ignore[attr-defined]

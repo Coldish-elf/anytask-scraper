@@ -1,12 +1,36 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Container
 
 from textual.app import ComposeResult
 from textual.message import Message
 from textual.widget import Widget
 from textual.widgets import Input, Select
+
+
+def _is_blank_select_value(value: object) -> bool:
+    return value is None or value is Select.NULL or value is Select.BLANK
+
+
+def _serialize_select_value(select: Select[Any]) -> object | None:
+    return None if _is_blank_select_value(select.value) else select.value
+
+
+def _restore_select_value(select: Select[Any], value: object) -> None:
+    if _is_blank_select_value(value):
+        select.clear()
+        return
+    select.value = value
+
+
+def _restore_select_value_from_options(
+    select: Select[Any], value: object, valid_values: Container[object]
+) -> None:
+    if _is_blank_select_value(value) or value not in valid_values:
+        select.clear()
+        return
+    select.value = value
 
 
 class TaskFilterBar(Widget):
@@ -35,14 +59,12 @@ class TaskFilterBar(Widget):
         yield Select[str](
             [(s, s) for s in self._statuses],
             allow_blank=True,
-            value=Select.BLANK,  # type: ignore[arg-type]
             prompt="Status",
             id="task-filter-status",
         )
         yield Select[str](
             [(s, s) for s in self._sections],
             allow_blank=True,
-            value=Select.BLANK,  # type: ignore[arg-type]
             prompt="Section",
             id="task-filter-section",
         )
@@ -60,29 +82,29 @@ class TaskFilterBar(Widget):
         status_val = self.query_one("#task-filter-status", Select).value
         section_val = self.query_one("#task-filter-section", Select).value
 
-        status = "" if status_val is Select.BLANK else str(status_val)
-        section = "" if section_val is Select.BLANK else str(section_val)
+        status = "" if _is_blank_select_value(status_val) else str(status_val)
+        section = "" if _is_blank_select_value(section_val) else str(section_val)
 
         self.post_message(self.Changed(text=text, status=status, section=section))
 
     def reset(self) -> None:
         self.query_one("#task-filter-text", Input).value = ""
-        self.query_one("#task-filter-status", Select).value = Select.BLANK
-        self.query_one("#task-filter-section", Select).value = Select.BLANK
+        self.query_one("#task-filter-status", Select).clear()
+        self.query_one("#task-filter-section", Select).clear()
         self._emit_changed()
         self.post_message(self.Reset())
 
     def save_state(self) -> dict[str, Any]:
         return {
             "text": self.query_one("#task-filter-text", Input).value,
-            "status": self.query_one("#task-filter-status", Select).value,
-            "section": self.query_one("#task-filter-section", Select).value,
+            "status": _serialize_select_value(self.query_one("#task-filter-status", Select)),
+            "section": _serialize_select_value(self.query_one("#task-filter-section", Select)),
         }
 
     def restore_state(self, state: dict[str, Any]) -> None:
         self.query_one("#task-filter-text", Input).value = state.get("text", "")
-        self.query_one("#task-filter-status", Select).value = state.get("status", Select.BLANK)
-        self.query_one("#task-filter-section", Select).value = state.get("section", Select.BLANK)
+        _restore_select_value(self.query_one("#task-filter-status", Select), state.get("status"))
+        _restore_select_value(self.query_one("#task-filter-section", Select), state.get("section"))
         self._emit_changed()
 
     def focus_text(self) -> None:
@@ -135,8 +157,8 @@ class TaskFilterBar(Widget):
 
         status_select.set_options([(s, s) for s in statuses])
         section_select.set_options([(s, s) for s in sections])
-        status_select.value = current_status if current_status in set(statuses) else Select.BLANK
-        section_select.value = current_section if current_section in set(sections) else Select.BLANK
+        _restore_select_value_from_options(status_select, current_status, set(statuses))
+        _restore_select_value_from_options(section_select, current_section, set(sections))
         text_input.value = current_text
 
 
@@ -172,28 +194,24 @@ class QueueFilterBar(Widget):
         yield Select[str](
             [(s, s) for s in self._students],
             allow_blank=True,
-            value=Select.BLANK,  # type: ignore[arg-type]
             prompt="Student",
             id="queue-filter-student",
         )
         yield Select[str](
             [(t, t) for t in self._tasks],
             allow_blank=True,
-            value=Select.BLANK,  # type: ignore[arg-type]
             prompt="Task",
             id="queue-filter-task",
         )
         yield Select[str](
             [(s, s) for s in self._statuses],
             allow_blank=True,
-            value=Select.BLANK,  # type: ignore[arg-type]
             prompt="Status",
             id="queue-filter-status",
         )
         yield Select[str](
             [(r, r) for r in self._reviewers],
             allow_blank=True,
-            value=Select.BLANK,  # type: ignore[arg-type]
             prompt="Reviewer",
             id="queue-filter-reviewer",
         )
@@ -213,10 +231,10 @@ class QueueFilterBar(Widget):
         status_val = self.query_one("#queue-filter-status", Select).value
         reviewer_val = self.query_one("#queue-filter-reviewer", Select).value
 
-        student = "" if student_val is Select.BLANK else str(student_val)
-        task = "" if task_val is Select.BLANK else str(task_val)
-        status = "" if status_val is Select.BLANK else str(status_val)
-        reviewer = "" if reviewer_val is Select.BLANK else str(reviewer_val)
+        student = "" if _is_blank_select_value(student_val) else str(student_val)
+        task = "" if _is_blank_select_value(task_val) else str(task_val)
+        status = "" if _is_blank_select_value(status_val) else str(status_val)
+        reviewer = "" if _is_blank_select_value(reviewer_val) else str(reviewer_val)
 
         self.post_message(
             self.Changed(text=text, student=student, task=task, status=status, reviewer=reviewer)
@@ -224,28 +242,30 @@ class QueueFilterBar(Widget):
 
     def reset(self) -> None:
         self.query_one("#queue-filter-text", Input).value = ""
-        self.query_one("#queue-filter-student", Select).value = Select.BLANK
-        self.query_one("#queue-filter-task", Select).value = Select.BLANK
-        self.query_one("#queue-filter-status", Select).value = Select.BLANK
-        self.query_one("#queue-filter-reviewer", Select).value = Select.BLANK
+        self.query_one("#queue-filter-student", Select).clear()
+        self.query_one("#queue-filter-task", Select).clear()
+        self.query_one("#queue-filter-status", Select).clear()
+        self.query_one("#queue-filter-reviewer", Select).clear()
         self._emit_changed()
         self.post_message(self.Reset())
 
     def save_state(self) -> dict[str, Any]:
         return {
             "text": self.query_one("#queue-filter-text", Input).value,
-            "student": self.query_one("#queue-filter-student", Select).value,
-            "task": self.query_one("#queue-filter-task", Select).value,
-            "status": self.query_one("#queue-filter-status", Select).value,
-            "reviewer": self.query_one("#queue-filter-reviewer", Select).value,
+            "student": _serialize_select_value(self.query_one("#queue-filter-student", Select)),
+            "task": _serialize_select_value(self.query_one("#queue-filter-task", Select)),
+            "status": _serialize_select_value(self.query_one("#queue-filter-status", Select)),
+            "reviewer": _serialize_select_value(self.query_one("#queue-filter-reviewer", Select)),
         }
 
     def restore_state(self, state: dict[str, Any]) -> None:
         self.query_one("#queue-filter-text", Input).value = state.get("text", "")
-        self.query_one("#queue-filter-student", Select).value = state.get("student", Select.BLANK)
-        self.query_one("#queue-filter-task", Select).value = state.get("task", Select.BLANK)
-        self.query_one("#queue-filter-status", Select).value = state.get("status", Select.BLANK)
-        self.query_one("#queue-filter-reviewer", Select).value = state.get("reviewer", Select.BLANK)
+        _restore_select_value(self.query_one("#queue-filter-student", Select), state.get("student"))
+        _restore_select_value(self.query_one("#queue-filter-task", Select), state.get("task"))
+        _restore_select_value(self.query_one("#queue-filter-status", Select), state.get("status"))
+        _restore_select_value(
+            self.query_one("#queue-filter-reviewer", Select), state.get("reviewer")
+        )
         self._emit_changed()
 
     def focus_text(self) -> None:
@@ -314,13 +334,11 @@ class QueueFilterBar(Widget):
         status_select.set_options([(s, s) for s in statuses])
         if reviewers is not None:
             reviewer_select.set_options([(r, r) for r in reviewers])
-        student_select.value = current_student if current_student in set(students) else Select.BLANK
-        task_select.value = current_task if current_task in set(tasks) else Select.BLANK
-        status_select.value = current_status if current_status in set(statuses) else Select.BLANK
+        _restore_select_value_from_options(student_select, current_student, set(students))
+        _restore_select_value_from_options(task_select, current_task, set(tasks))
+        _restore_select_value_from_options(status_select, current_status, set(statuses))
         current_reviewers = set(reviewers or self._reviewers)
-        reviewer_select.value = (
-            current_reviewer if current_reviewer in current_reviewers else Select.BLANK
-        )
+        _restore_select_value_from_options(reviewer_select, current_reviewer, current_reviewers)
         text_input.value = current_text
 
 
@@ -350,14 +368,12 @@ class GradebookFilterBar(Widget):
         yield Select[str](
             [(g, g) for g in self._groups],
             allow_blank=True,
-            value=Select.BLANK,  # type: ignore[arg-type]
             prompt="Group",
             id="gb-filter-group",
         )
         yield Select[str](
             [(t, t) for t in self._teachers],
             allow_blank=True,
-            value=Select.BLANK,  # type: ignore[arg-type]
             prompt="Teacher",
             id="gb-filter-teacher",
         )
@@ -375,29 +391,29 @@ class GradebookFilterBar(Widget):
         group_val = self.query_one("#gb-filter-group", Select).value
         teacher_val = self.query_one("#gb-filter-teacher", Select).value
 
-        group = "" if group_val is Select.BLANK else str(group_val)
-        teacher = "" if teacher_val is Select.BLANK else str(teacher_val)
+        group = "" if _is_blank_select_value(group_val) else str(group_val)
+        teacher = "" if _is_blank_select_value(teacher_val) else str(teacher_val)
 
         self.post_message(self.Changed(text=text, group=group, teacher=teacher))
 
     def reset(self) -> None:
         self.query_one("#gb-filter-text", Input).value = ""
-        self.query_one("#gb-filter-group", Select).value = Select.BLANK
-        self.query_one("#gb-filter-teacher", Select).value = Select.BLANK
+        self.query_one("#gb-filter-group", Select).clear()
+        self.query_one("#gb-filter-teacher", Select).clear()
         self._emit_changed()
         self.post_message(self.Reset())
 
     def save_state(self) -> dict[str, Any]:
         return {
             "text": self.query_one("#gb-filter-text", Input).value,
-            "group": self.query_one("#gb-filter-group", Select).value,
-            "teacher": self.query_one("#gb-filter-teacher", Select).value,
+            "group": _serialize_select_value(self.query_one("#gb-filter-group", Select)),
+            "teacher": _serialize_select_value(self.query_one("#gb-filter-teacher", Select)),
         }
 
     def restore_state(self, state: dict[str, Any]) -> None:
         self.query_one("#gb-filter-text", Input).value = state.get("text", "")
-        self.query_one("#gb-filter-group", Select).value = state.get("group", Select.BLANK)
-        self.query_one("#gb-filter-teacher", Select).value = state.get("teacher", Select.BLANK)
+        _restore_select_value(self.query_one("#gb-filter-group", Select), state.get("group"))
+        _restore_select_value(self.query_one("#gb-filter-teacher", Select), state.get("teacher"))
         self._emit_changed()
 
     def focus_text(self) -> None:
@@ -450,6 +466,6 @@ class GradebookFilterBar(Widget):
 
         group_select.set_options([(g, g) for g in groups])
         teacher_select.set_options([(t, t) for t in teachers])
-        group_select.value = current_group if current_group in set(groups) else Select.BLANK
-        teacher_select.value = current_teacher if current_teacher in set(teachers) else Select.BLANK
+        _restore_select_value_from_options(group_select, current_group, set(groups))
+        _restore_select_value_from_options(teacher_select, current_teacher, set(teachers))
         text_input.value = current_text

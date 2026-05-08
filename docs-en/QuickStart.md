@@ -3,14 +3,14 @@
 ## 1. Installation
 
 ```bash
-pip install git+https://github.com/Coldish-elf/anytask_scraper.git
+pip install git+https://github.com/Coldish-elf/anytask-scraper.git
 ```
 
 For development:
 
 ```bash
-git clone https://github.com/Coldish-elf/anytask_scraper.git
-cd anytask_scraper
+git clone https://github.com/Coldish-elf/anytask-scraper.git
+cd anytask-scraper
 pip install -e ".[dev]"
 ```
 

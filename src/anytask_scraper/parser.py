@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 _DEADLINE_RE = re.compile(r"(\d{2}):(\d{2})\s+(\d{2})-(\d{2})-(\d{4})")
 _TASK_ID_RE = re.compile(r"collapse_(\d+)")
 _TASK_EDIT_RE = re.compile(r"/task/edit/(\d+)")
-_COURSE_URL_RE = re.compile(r"/course/(\d+)")
+_COURSE_URL_RE = re.compile(r"/courses?/(\d+)")
 
 
 def parse_course_page(html: str, course_id: int) -> Course:
@@ -53,18 +53,16 @@ def parse_profile_page(html: str) -> list[ProfileCourseEntry]:
     soup = BeautifulSoup(html, "lxml")
     seen: dict[int, ProfileCourseEntry] = {}
 
-    teacher_div = soup.find("div", id="teacher_course")
-    if teacher_div:
-        for a_tag in teacher_div.find_all("a", href=_COURSE_URL_RE):
+    for container in _profile_course_containers(soup, role="teacher"):
+        for a_tag in container.find_all("a", href=_COURSE_URL_RE):
             m = _COURSE_URL_RE.search(str(a_tag["href"]))
             if m:
                 cid = int(m.group(1))
                 title = a_tag.get_text(strip=True)
                 seen[cid] = ProfileCourseEntry(course_id=cid, title=title, role="teacher")
 
-    student_div = soup.find("div", id="course_list")
-    if student_div:
-        for a_tag in student_div.find_all("a", href=_COURSE_URL_RE):
+    for container in _profile_course_containers(soup, role="student"):
+        for a_tag in container.find_all("a", href=_COURSE_URL_RE):
             m = _COURSE_URL_RE.search(str(a_tag["href"]))
             if m:
                 cid = int(m.group(1))
@@ -73,6 +71,35 @@ def parse_profile_page(html: str) -> list[ProfileCourseEntry]:
                     seen[cid] = ProfileCourseEntry(course_id=cid, title=title, role="student")
 
     return list(seen.values())
+
+
+def _profile_course_containers(soup: BeautifulSoup, *, role: str) -> list[Tag]:
+    if role == "teacher":
+        id_patterns: tuple[str, ...] = (r"teacher_?course", r"teacher_?courses")
+    else:
+        id_patterns = (r"course_?list", r"student_?course", r"student_?courses")
+
+    containers: list[Tag] = []
+    for pattern in id_patterns:
+        containers.extend(
+            tag for tag in soup.find_all(id=re.compile(pattern, re.I)) if isinstance(tag, Tag)
+        )
+
+    if containers:
+        return containers
+
+    if role == "teacher":
+        marker_words: tuple[str, ...] = ("teacher", "преподав")
+    else:
+        marker_words = ("student", "студент", "курс")
+    for heading in soup.find_all(["h1", "h2", "h3", "h4", "h5", "h6"]):
+        text = heading.get_text(" ", strip=True).lower()
+        if any(word in text for word in marker_words):
+            parent = heading.parent
+            if isinstance(parent, Tag):
+                containers.append(parent)
+
+    return containers
 
 
 def _extract_course_title(soup: BeautifulSoup) -> str:

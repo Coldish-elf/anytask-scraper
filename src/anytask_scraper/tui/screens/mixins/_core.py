@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Any
 
 import httpx
 from textual import events, on, work
+from textual.coordinate import Coordinate
 from textual.widgets import (
     DataTable,
     Input,
@@ -51,6 +52,7 @@ class CoreMixin:
     _queue_loaded_for: int | None
     _queue_preview_submission: Submission | None
     _queue_filter_undo: dict[str, Any] | None
+    _discover_in_progress: bool
     _gradebook_loaded_for: int | None
     all_gradebook_groups: list[GradebookGroup]
     filtered_gradebook_groups: list[GradebookGroup]
@@ -60,6 +62,7 @@ class CoreMixin:
     _gb_filter_undo: dict[str, Any] | None
 
     focused: Any
+    call_after_refresh: Any
 
     def _maybe_load_queue(self) -> None:
         raise NotImplementedError
@@ -544,6 +547,21 @@ class CoreMixin:
             return size - 1
         return cursor_row
 
+    def _table_view_state(self, table: DataTable[Any]) -> tuple[int, int]:
+        return (int(getattr(table, "scroll_x", 0)), int(getattr(table, "cursor_row", 0)))
+
+    def _restore_table_view(
+        self,
+        table: DataTable[Any],
+        state: tuple[int, int],
+        row_count: int,
+    ) -> None:
+        scroll_x, cursor_row = state
+        if row_count > 0:
+            table.cursor_coordinate = Coordinate(min(max(cursor_row, 0), row_count - 1), 0)
+        if scroll_x > 0:
+            self.call_after_refresh(table.scroll_to, x=scroll_x, animate=False)  # type: ignore[attr-defined]
+
     def action_reset_filters(self) -> None:
         tabs = self.query_one("#main-tabs", TabbedContent)  # type: ignore[attr-defined]
         active = tabs.active
@@ -614,6 +632,10 @@ class CoreMixin:
         self._fetch_course(course_id)
 
     def action_discover_courses(self) -> None:
+        if self._discover_in_progress:
+            self._show_status("Discovery already running", kind="info", timeout=2)
+            return
+        self._discover_in_progress = True
         self._show_status("Discovering courses from profile...")
         self._do_discover_courses()
 
@@ -666,6 +688,11 @@ class CoreMixin:
                 f"Discover failed: {e}",
                 kind="error",
             )
+        finally:
+            self.app.call_from_thread(self._finish_discover_courses)
+
+    def _finish_discover_courses(self) -> None:
+        self._discover_in_progress = False
 
     def action_remove_course(self) -> None:
         if self._selected_course_id is None:

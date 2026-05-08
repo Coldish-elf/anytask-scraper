@@ -82,3 +82,19 @@ class TestParseProfilePageEmpty:
         assert len(entries) == 1
         assert entries[0].course_id == 200
         assert entries[0].role == "student"
+
+    def test_plural_course_url_and_container_variants(self) -> None:
+        html = """
+        <section id="teacher_courses">
+            <a href="/courses/100">Course A</a>
+        </section>
+        <section id="student_courses">
+            <a href="/courses/200">Course B</a>
+            <a href="/courses/100">Course A</a>
+        </section>
+        """
+        entries = parse_profile_page(html)
+        by_id = {entry.course_id: entry for entry in entries}
+
+        assert by_id[100].role == "teacher"
+        assert by_id[200].role == "student"

@@ -30,6 +30,8 @@ class GradebookMixin:
 
     _show_status: Any
     _table_cursor_index: Any
+    _table_view_state: Any
+    _restore_table_view: Any
 
     _GRADEBOOK_COLOR_MAP: dict[str, str] = {
         "#65E31B": "bold green",
@@ -170,11 +172,13 @@ class GradebookMixin:
 
     def _rebuild_gradebook_table(self, groups: list[GradebookGroup]) -> None:
         table = self.query_one("#gradebook-table", DataTable)  # type: ignore[attr-defined]
+        view_state = self._table_view_state(table)
         table.clear(columns=True)
 
         if not groups:
             table.add_column("Info")
             table.add_row("No gradebook data")
+            self._restore_table_view(table, view_state, 1)
             return
 
         all_tasks: list[str] = []
@@ -212,6 +216,7 @@ class GradebookMixin:
                     row.append(Text(score_str, style=style))
                 row.append(str(entry.total_score))
                 table.add_row(*row, key=str(row_num))
+        self._restore_table_view(table, view_state, table.row_count)
 
     @on(DataTable.HeaderSelected, "#gradebook-table")
     def _gb_header_selected(self, event: DataTable.HeaderSelected) -> None:
@@ -265,6 +270,7 @@ class GradebookMixin:
             )
 
         table = self.query_one("#gradebook-table", DataTable)  # type: ignore[attr-defined]
+        view_state = self._table_view_state(table)
         table.clear(columns=True)
 
         base_columns = ["#", "Group", "Student", "Teacher"] + all_tasks + ["Total"]
@@ -292,6 +298,7 @@ class GradebookMixin:
                 row.append(Text(score_str, style=style))
             row.append(str(entry.total_score))
             table.add_row(*row, key=str(row_num))
+        self._restore_table_view(table, view_state, len(flat))
 
     def _update_gradebook_info(self, text: str) -> None:
         self.query_one("#gradebook-info-label", Label).update(text)  # type: ignore[attr-defined]

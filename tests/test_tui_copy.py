@@ -6,7 +6,7 @@ from types import SimpleNamespace
 
 from rich.text import Text
 
-from anytask_scraper.models import Comment, FileAttachment, Submission, Task
+from anytask_scraper.models import Comment, FileAttachment, QueueEntry, Submission, Task
 from anytask_scraper.tui import app as app_mod
 from anytask_scraper.tui import clipboard as clipboard_mod
 from anytask_scraper.tui.screens import action_menu as action_menu_mod
@@ -405,3 +405,100 @@ def test_fetch_and_show_task_submission_skips_new_tasks() -> None:
     main_mod.MainScreen._fetch_and_show_task_submission.__wrapped__(screen, task)
 
     assert statuses == [("No submission yet for this task", "info")]
+
+
+def test_queue_highlight_debounces_submission_preview_load() -> None:
+    entry_a = QueueEntry(
+        student_name="Alice",
+        student_url="",
+        task_title="HW 1",
+        update_time="",
+        mark="",
+        status_color="default",
+        status_name="",
+        responsible_name="",
+        responsible_url="",
+        has_issue_access=True,
+        issue_url="/issue/1",
+    )
+    entry_b = QueueEntry(
+        student_name="Bob",
+        student_url="",
+        task_title="HW 2",
+        update_time="",
+        mark="",
+        status_color="default",
+        status_name="",
+        responsible_name="",
+        responsible_url="",
+        has_issue_access=True,
+        issue_url="/issue/2",
+    )
+    stopped: list[str] = []
+    started: list[tuple[QueueEntry, int, int | None]] = []
+    timers: list[SimpleNamespace] = []
+
+    def set_timer(_delay: float, callback):
+        timer = SimpleNamespace(stop=lambda: stopped.append("stop"), callback=callback)
+        timers.append(timer)
+        return timer
+
+    screen = SimpleNamespace(
+        app=SimpleNamespace(queue_cache={}),
+        all_queue_entries=[entry_a, entry_b],
+        _selected_course_id=9001,
+        _queue_preview_issue_url="",
+        _queue_preview_token=0,
+        _queue_preview_timer=None,
+        _show_queue_preview_info=lambda _entry: None,
+        _render_queue_preview_if_current=lambda *_args: None,
+        _preview_request_is_current=lambda issue_url, token, course_id: (
+            token == screen._queue_preview_token
+            and issue_url == screen._queue_preview_issue_url
+            and course_id == screen._selected_course_id
+        ),
+        _load_queue_preview=lambda entry, token, course_id: started.append(
+            (entry, token, course_id)
+        ),
+        set_timer=set_timer,
+    )
+    screen._schedule_queue_preview_load = lambda entry, token, course_id: (
+        main_mod.MainScreen._schedule_queue_preview_load(screen, entry, token, course_id)
+    )
+    screen._start_scheduled_queue_preview = lambda entry, token, course_id: (
+        main_mod.MainScreen._start_scheduled_queue_preview(screen, entry, token, course_id)
+    )
+
+    main_mod.MainScreen._queue_row_highlighted(
+        screen, SimpleNamespace(row_key=SimpleNamespace(value="/issue/1"))
+    )
+    main_mod.MainScreen._queue_row_highlighted(
+        screen, SimpleNamespace(row_key=SimpleNamespace(value="/issue/2"))
+    )
+    timers[0].callback()
+    timers[1].callback()
+
+    assert stopped == ["stop"]
+    assert started == [(entry_b, 2, 9001)]
+
+
+def test_restore_table_view_keeps_horizontal_scroll() -> None:
+    scroll_calls: list[dict[str, object]] = []
+    table = SimpleNamespace(
+        scroll_x=18,
+        cursor_row=4,
+        cursor_coordinate=(0, 0),
+        scroll_to=lambda **kwargs: scroll_calls.append(kwargs),
+    )
+    screen = SimpleNamespace(
+        call_after_refresh=lambda fn, **kwargs: fn(**kwargs),
+    )
+
+    state = main_mod.MainScreen._table_view_state(screen, table)
+    table.scroll_x = 0
+    table.cursor_row = 0
+    main_mod.MainScreen._restore_table_view(screen, table, state, row_count=3)
+
+    assert table.cursor_coordinate.row == 2
+    assert table.cursor_coordinate.column == 0
+    assert scroll_calls == [{"x": 18, "animate": False}]

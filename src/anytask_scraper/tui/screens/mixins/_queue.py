@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Any
 
 import httpx
 from textual import on, work
-from textual.containers import Horizontal, VerticalScroll
+from textual.containers import Vertical, VerticalScroll
 from textual.widgets import Button, DataTable, Label
 
 from anytask_scraper.tui.widgets.filter_bar import QueueFilterBar
@@ -37,12 +37,16 @@ class QueueMixin:
     _queue_preview_submission: Submission | None
     _queue_preview_issue_url: str
     _queue_preview_token: int
+    _queue_preview_timer: Any | None
     is_teacher_view: bool
 
     _show_status: Any
     _table_cursor_index: Any
+    _table_view_state: Any
+    _restore_table_view: Any
     _push_submission_screen: Any
     query_one: Any
+    set_timer: Any
 
     def _copy_queue_payload(self) -> tuple[str, str] | None:
         from anytask_scraper.tui.clipboard import format_queue_entry_for_clipboard
@@ -126,11 +130,49 @@ class QueueMixin:
         if entry and entry.has_issue_access and entry.issue_url:
             self._queue_preview_issue_url = entry.issue_url
             self._queue_preview_token += 1
-            self._load_queue_preview(entry, self._queue_preview_token, self._selected_course_id)
+            self._schedule_queue_preview_load(
+                entry,
+                self._queue_preview_token,
+                self._selected_course_id,
+            )
         elif entry:
             self._queue_preview_issue_url = entry.issue_url
             self._queue_preview_token += 1
             self._show_queue_preview_info(entry)
+
+    def _schedule_queue_preview_load(
+        self,
+        entry: QueueEntry,
+        token: int,
+        course_id: int | None,
+    ) -> None:
+        if course_id is not None:
+            cache = self.app.queue_cache.get(course_id)
+            if cache and entry.issue_url in cache.submissions:
+                self._render_queue_preview_if_current(
+                    cache.submissions[entry.issue_url],
+                    entry.issue_url,
+                    token,
+                    course_id,
+                )
+                return
+
+        if self._queue_preview_timer is not None:
+            self._queue_preview_timer.stop()
+        self._show_queue_preview_info(entry)
+        self._queue_preview_timer = self.set_timer(
+            0.25,
+            lambda: self._start_scheduled_queue_preview(entry, token, course_id),
+        )  # type: ignore[attr-defined]
+
+    def _start_scheduled_queue_preview(
+        self,
+        entry: QueueEntry,
+        token: int,
+        course_id: int | None,
+    ) -> None:
+        if self._preview_request_is_current(entry.issue_url, token, course_id):
+            self._load_queue_preview(entry, token, course_id)
 
     @on(DataTable.RowSelected, "#queue-table")
     def _queue_row_selected(self, event: DataTable.RowSelected) -> None:
@@ -359,7 +401,7 @@ class QueueMixin:
             self._render_queue_preview(sub)
 
     def _update_queue_action_bar(self) -> None:
-        bar = self.query_one("#queue-action-bar", Horizontal)  # type: ignore[attr-defined]
+        bar = self.query_one("#queue-action-bar", Vertical)  # type: ignore[attr-defined]
         if self.is_teacher_view and self._queue_preview_submission is not None:
             bar.remove_class("hidden")
         else:
@@ -379,6 +421,9 @@ class QueueMixin:
         self._queue_preview_token += 1
         self._queue_preview_issue_url = ""
         self._queue_preview_submission = None
+        if self._queue_preview_timer is not None:
+            self._queue_preview_timer.stop()
+            self._queue_preview_timer = None
         self._update_queue_action_bar()
         scroll = self.query_one("#queue-detail-scroll", VerticalScroll)  # type: ignore[attr-defined]
         scroll.remove_children()
@@ -614,6 +659,7 @@ class QueueMixin:
 
     def _rebuild_queue_table(self) -> None:
         table = self.query_one("#queue-table", DataTable)  # type: ignore[attr-defined]
+        view_state = self._table_view_state(table)
         table.clear(columns=True)
 
         base_columns = (
@@ -648,6 +694,7 @@ class QueueMixin:
                 entry.mark,
                 key=entry.issue_url or str(idx),
             )
+        self._restore_table_view(table, view_state, len(self.filtered_queue_entries))
 
     def _maybe_load_queue(self) -> None:
         self._enable_queue_tab()

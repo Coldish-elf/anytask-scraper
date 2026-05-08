@@ -1,10 +1,10 @@
 [build-system]
-requires = ["setuptools>=61"]
+requires = ["setuptools>=77.0.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "anytask-scraper"
-version = "1.1.1"
+version = "1.1.2"
 description = "CLI, TUI and Python library for anytask.org"
 readme = {file = "README.md", content-type = "text/markdown"}
 license = "MIT"
@@ -38,16 +38,15 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/Coldish-elf/anytask_scraper"
-Repository = "https://github.com/Coldish-elf/anytask_scraper"
-Issues = "https://github.com/Coldish-elf/anytask_scraper/issues"
-Documentation = "https://github.com/Coldish-elf/anytask_scraper/tree/main/docs-en"
-Changelog = "https://github.com/Coldish-elf/anytask_scraper/blob/main/docs-en/Changelog.md"
+Homepage = "https://github.com/Coldish-elf/anytask-scraper"
+Repository = "https://github.com/Coldish-elf/anytask-scraper"
+Issues = "https://github.com/Coldish-elf/anytask-scraper/issues"
+Documentation = "https://github.com/Coldish-elf/anytask-scraper/tree/main/docs-en"
 
 [project.optional-dependencies]
 tui = [
     "rich>=13.0",
-    "textual>=0.70",
+    "textual>=8.2.5",
 ]
 api = [
     "fastapi>=0.111",
@@ -55,10 +54,10 @@ api = [
 ]
 dev = [
     "pytest>=8.0",
-    "ruff==0.15.1",
+    "ruff>=0.4",
     "mypy>=1.10",
     "rich>=13.0",
-    "textual>=0.70",
+    "textual>=8.2.5",
 ]
 
 [project.scripts]

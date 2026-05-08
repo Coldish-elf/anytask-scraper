@@ -5,7 +5,7 @@
 API - опциональная зависимость. Установите с флагом `[api]`:
 
 ```bash
-pip install "anytask-scraper[api] @ git+https://github.com/Coldish-elf/anytask_scraper.git"
+pip install "anytask-scraper[api] @ git+https://github.com/Coldish-elf/anytask-scraper.git"
 ```
 
 Или при локальной разработке:

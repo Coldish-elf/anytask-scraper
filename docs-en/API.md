@@ -5,7 +5,7 @@
 API is an optional dependency. Install with the `[api]` flag:
 
 ```bash
-pip install "anytask-scraper[api] @ git+https://github.com/Coldish-elf/anytask_scraper.git"
+pip install "anytask-scraper[api] @ git+https://github.com/Coldish-elf/anytask-scraper.git"
 ```
 
 Or when developing locally:

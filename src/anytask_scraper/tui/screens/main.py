@@ -128,7 +128,9 @@ class MainScreen(ExportMixin, GradebookMixin, QueueMixin, TasksMixin, CoreMixin,
         self._queue_sort_reverse = False
         self._queue_preview_submission: Submission | None = None
         self._queue_preview_token = 0
+        self._queue_preview_timer: Any | None = None
         self._queue_preview_issue_url = ""
+        self._discover_in_progress = False
         self._gradebook_loaded_for: int | None = None
         self.all_gradebook_groups: list[GradebookGroup] = []
         self.filtered_gradebook_groups: list[GradebookGroup] = []
@@ -205,15 +207,17 @@ class MainScreen(ExportMixin, GradebookMixin, QueueMixin, TasksMixin, CoreMixin,
                                 Label("[dim]Select a queue entry[/dim]"),
                                 id="queue-detail-scroll",
                             )
-                            with Horizontal(id="queue-action-bar", classes="hidden"):
-                                yield Button(
-                                    "Accept & Rate",
-                                    id="queue-btn-rate",
-                                    variant="success",
-                                )
-                                yield Button("Grade", id="queue-btn-grade")
-                                yield Button("Status", id="queue-btn-status")
-                                yield Button("Comment", id="queue-btn-comment")
+                            with Vertical(id="queue-action-bar", classes="hidden"):
+                                with Horizontal(classes="queue-action-row"):
+                                    yield Button(
+                                        "Accept & Rate",
+                                        id="queue-btn-rate",
+                                        variant="success",
+                                    )
+                                    yield Button("Grade", id="queue-btn-grade")
+                                with Horizontal(classes="queue-action-row"):
+                                    yield Button("Status", id="queue-btn-status")
+                                    yield Button("Comment", id="queue-btn-comment")
 
                 with TabPane("Gradebook", id="gradebook-tab"):
                     yield GradebookFilterBar(classes="filter-bar", id="gb-filter-bar")

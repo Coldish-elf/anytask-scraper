@@ -1,6 +1,6 @@
 # Anytask Scraper
 
-[![CI](https://github.com/Coldish-elf/anytask_scraper/actions/workflows/ci.yml/badge.svg)](https://github.com/Coldish-elf/anytask_scraper/actions/workflows/ci.yml)
+[![CI](https://github.com/Coldish-elf/anytask-scraper/actions/workflows/ci.yml/badge.svg)](https://github.com/Coldish-elf/anytask-scraper/actions/workflows/ci.yml)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
@@ -22,26 +22,26 @@
 Library only:
 
 ```bash
-pip install "git+https://github.com/Coldish-elf/anytask_scraper.git"
+pip install "git+https://github.com/Coldish-elf/anytask-scraper.git"
 ```
 
 With CLI and TUI:
 
 ```bash
-pip install "anytask-scraper[tui] @ git+https://github.com/Coldish-elf/anytask_scraper.git"
+pip install "anytask-scraper[tui] @ git+https://github.com/Coldish-elf/anytask-scraper.git"
 ```
 
 With HTTP API server:
 
 ```bash
-pip install "anytask-scraper[tui,api] @ git+https://github.com/Coldish-elf/anytask_scraper.git"
+pip install "anytask-scraper[tui,api] @ git+https://github.com/Coldish-elf/anytask-scraper.git"
 ```
 
 For local development:
 
 ```bash
-git clone https://github.com/Coldish-elf/anytask_scraper.git
-cd anytask_scraper
+git clone https://github.com/Coldish-elf/anytask-scraper.git
+cd anytask-scraper
 pip install -e ".[dev,api]"
 ```
 
